@@ -160,4 +160,27 @@ class TranscriptTest {
             buildShareText(transcript),
         )
     }
+
+    @Test
+    fun picksOriginalTrackOverLocaleAndEnglish() {
+        assertEquals(
+            "sub.es-orig.json3",
+            pickSubtitle(listOf("sub.en.json3", "sub.es-orig.json3", "sub.fr.json3"), "fr"),
+        )
+    }
+
+    @Test
+    fun picksDeviceLocaleWhenNoOriginalTrack() {
+        assertEquals(
+            "sub.fr.json3",
+            pickSubtitle(listOf("sub.en.json3", "sub.fr.json3"), "fr"),
+        )
+    }
+
+    @Test
+    fun fallsBackToEnglishThenFirstFile() {
+        assertEquals("sub.en.json3", pickSubtitle(listOf("sub.de.json3", "sub.en.json3"), "fr"))
+        assertEquals("sub.de.json3", pickSubtitle(listOf("sub.de.json3", "sub.ja.json3"), "fr"))
+        assertNull(pickSubtitle(emptyList(), "fr"))
+    }
 }

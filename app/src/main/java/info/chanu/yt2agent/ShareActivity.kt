@@ -4,27 +4,33 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 
 /**
- * Receives a YouTube link shared from another app, fetches the video transcript, and
- * re-shares it as plain text.
+ * Receives a link shared from another app, fetches the video transcript, and
+ * re-shares it as plain text. Fetch failures show an error screen with a retry.
  */
 class ShareActivity : Activity() {
+
+    private var videoUrl: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val videoUrl = intent?.getStringExtra(Intent.EXTRA_TEXT)?.let(::findSharedUrl)
-        if (videoUrl == null) {
+        videoUrl = intent?.getStringExtra(Intent.EXTRA_TEXT)?.let(::findSharedUrl) ?: ""
+        if (videoUrl.isEmpty()) {
             Toast.makeText(this, R.string.no_youtube_link, Toast.LENGTH_LONG).show()
             finish()
             return
         }
 
         setContentView(R.layout.activity_share)
+        startFetch()
+    }
 
+    private fun startFetch() {
         Thread {
             try {
                 val transcript = TranscriptFetcher(this).fetch(videoUrl) { title ->
@@ -36,12 +42,18 @@ class ShareActivity : Activity() {
                 runOnUiThread { shareTranscript(transcript) }
             } catch (e: Exception) {
                 Log.e("yt2agent", "transcript fetch failed", e)
-                runOnUiThread {
-                    Toast.makeText(this, getString(R.string.fetch_failed, firstErrorLine(e)), Toast.LENGTH_LONG).show()
-                    finish()
-                }
+                runOnUiThread { showError(e) }
             }
         }.start()
+    }
+
+    private fun showError(e: Exception) {
+        setContentView(R.layout.activity_error)
+        findViewById<TextView>(R.id.error_message).text = firstErrorLine(e)
+        findViewById<Button>(R.id.retry).setOnClickListener {
+            setContentView(R.layout.activity_share)
+            startFetch()
+        }
     }
 
     private fun shareTranscript(transcript: Transcript) {

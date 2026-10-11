@@ -38,7 +38,9 @@ class TranscriptFetcher(private val context: Context) {
         // Blocking on first call only: unpacks the bundled yt-dlp + python.
         YoutubeDL.getInstance().init(context)
 
-        if (lastUpdateAgoMillis() > UPDATE_TTL_MILLIS) updateBinary()
+        // The periodic check never blocks the fetch; a concurrent fetch may still run
+        // on the old binary, and the error path (forced update + retry) recovers that.
+        if (lastUpdateAgoMillis() > UPDATE_TTL_MILLIS) Thread { updateBinary() }.start()
 
         val transcript = try {
             fetchTranscript(videoUrl, onTitle)
@@ -69,8 +71,9 @@ class TranscriptFetcher(private val context: Context) {
             addOption("--write-subs")
             addOption("--write-auto-subs")
             addOption("--write-info-json")
-            // ponytail: device locale + English only; add a language picker if other languages matter
-            addOption("--sub-langs", "${Locale.getDefault().language},en")
+            // Original language first: YouTube's auto-translations degrade the text
+            // and agents read any language; device locale and English follow.
+            addOption("--sub-langs", ".*-orig,${Locale.getDefault().language},en")
             // ponytail: json3 only; sites without json3 subtitles report "no transcript"
             addOption("--sub-format", "json3")
             addOption("-o", File(outDir, "sub").absolutePath)
@@ -101,14 +104,17 @@ class TranscriptFetcher(private val context: Context) {
         titleThread.join()
 
         val info = if (infoFile.exists()) JSONObject(infoFile.readText()) else JSONObject()
-        val subFile = outDir.listFiles()?.firstOrNull { it.extension == "json3" }
+
+        // yt-dlp writes every requested language that exists; pick deterministically.
+        val subFiles = outDir.listFiles()?.filter { it.extension == "json3" }.orEmpty()
+        val subName = pickSubtitle(subFiles.map { it.name }, Locale.getDefault().language)
             ?: error(context.getString(R.string.no_transcript))
 
         return Transcript(
             title = info.optString("title"),
             description = info.optString("description"),
             url = info.optString("webpage_url").ifEmpty { videoUrl },
-            text = insertChapters(parseJson3(subFile.readText()), info),
+            text = insertChapters(parseJson3(File(outDir, subName).readText()), info),
         )
     }
 
@@ -155,7 +161,8 @@ class TranscriptFetcher(private val context: Context) {
     private fun lastUpdateAgoMillis(): Long =
         System.currentTimeMillis() - prefs.getLong(KEY_LAST_UPDATE, 0L)
 
-    private fun updateBinary() {
+    // Serialized: the periodic background check and the error path can overlap.
+    private fun updateBinary() = synchronized(this) {
         try {
             YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel.STABLE)
             prefs.edit().putLong(KEY_LAST_UPDATE, System.currentTimeMillis()).apply()
@@ -201,6 +208,18 @@ internal fun lineTimeMs(line: String): Long {
             match.groupValues[2].toLong() * 60 +
             match.groupValues[3].toLong()) * 1000
     }
+}
+
+/**
+ * Picks the subtitle file by preference: original-language track (`-orig`), device
+ * locale, English. The name list is never empty when called.
+ */
+internal fun pickSubtitle(names: List<String>, locale: String): String? {
+    if (names.isEmpty()) return null
+    for (pref in listOf("-orig", locale, "en")) {
+        names.firstOrNull { it.contains(pref, ignoreCase = true) }?.let { return it }
+    }
+    return names.first()
 }
 
 /**

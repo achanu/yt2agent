@@ -16,7 +16,9 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 - Android SDK at `$HOME/Documents/tools/android-sdk` (platform 36, build-tools 36),
   wired via `local.properties`.
 - minSdk 24, targetSdk 35, Java/Kotlin bytecode level 17.
-- ABIs limited to arm64-v8a + armeabi-v7a (`ndk.abiFilters`); x86 would only serve emulators.
+- ABIs limited to arm64-v8a + armeabi-v7a (`ndk.abiFilters`, required to keep the
+  universal APK small) plus `splits.abi` with `isUniversalApk`: the release produces
+  arm64 (18 MB), v7a (17 MB) and universal (31 MB) APKs. x86 would only serve emulators.
 - Release is R8-minified; `proguard-rules.pro` keeps the whole
   `com.yausername.youtubedl_android` tree (native code may reflect into it).
 - `packaging.jniLibs.useLegacyPackaging = true` is required: youtubedl-android reads its
@@ -57,8 +59,12 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 - Fetch options are load-bearing against YouTube 429s: `--ignore-errors`,
   `--retries/--retry-sleep`, and `--extractor-args youtube:player_client=android_vr`
   (the library cannot impersonate a browser, so the default client gets blocked).
-- `updateYoutubeDL(STABLE)` runs at most every 72 hours (SharedPreferences timestamp);
-  a failed fetch (except "no transcript") forces a redownload and one retry.
+- `updateYoutubeDL(STABLE)` runs at most every 72 hours (SharedPreferences timestamp),
+  asynchronously on its own thread; a failed fetch (except "no transcript") forces a
+  redownload and one retry synchronously — `updateBinary()` is synchronized.
+- Subtitle preference order: original track (`-orig`), device locale, English;
+  `pickSubtitle` selects deterministically among the files yt-dlp wrote.
+- Fetch failures show `activity_error` (message + Retry button) instead of a toast.
 - Cache: `cacheDir/transcripts/<md5-of-url>.json`, 7-day TTL; read before init, write
   after a successful fetch.
 - Error surface is a Toast + `finish()`. Toast text is filtered to the first

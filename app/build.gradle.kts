@@ -12,12 +12,23 @@ android {
         applicationId = "info.chanu.yt2agent"
         minSdk = 24
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.2.0"
+        versionCode = 7
+        versionName = "0.3.0"
 
         ndk {
-            // x86/x86_64 only serve emulators; this halves the APK size.
+            // x86/x86_64 only serve emulators; splits.include does not filter the
+            // universal APK, this does.
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+
+        // One APK per ABI plus a universal APK; modern phones download the small one.
+        splits {
+            abi {
+                isEnable = true
+                reset()
+                include("arm64-v8a", "armeabi-v7a")
+                isUniversalApk = true
+            }
         }
     }
 

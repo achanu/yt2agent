@@ -17,9 +17,11 @@ YouTube app → Share → yt2agent → transcript → app of your choice.
   from the shared text (`youtu.be/`, `watch?v=`, `shorts/`, `embed/`).
 - `TranscriptFetcher` runs a single yt-dlp pass that writes both the metadata
   (`--write-info-json`: title, description, URL, chapters) and the json3
-  captions (`--write-subs --write-auto-subs --skip-download`), in the device
-  language with English fallback. Results are cached for 7 days, so sharing the
-  same video again is instant and works offline.
+  captions (`--write-subs --write-auto-subs --skip-download`), preferring the
+  video's original language over YouTube's auto-translations, then the device
+  language, then English. Results are cached for 7 days, so sharing the same
+  video again is instant and works offline. On failure, an error screen with a
+  retry button replaces the old ephemeral toast.
 - Any URL accepted by yt-dlp works (YouTube, Vimeo, PeerTube, ...); the first
   URL found in the shared text is used.
 - The json3 captions are flattened to timestamped plain text: one `[MM:SS]` line
