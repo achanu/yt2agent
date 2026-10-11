@@ -1,6 +1,7 @@
 package info.chanu.yt2agent
 
 import android.content.Context
+import android.util.Log
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import org.json.JSONObject
@@ -109,6 +110,7 @@ class TranscriptFetcher(private val context: Context) {
         val subFiles = outDir.listFiles()?.filter { it.extension == "json3" }.orEmpty()
         val subName = pickSubtitle(subFiles.map { it.name }, Locale.getDefault().language)
             ?: error(context.getString(R.string.no_transcript))
+        Log.i("yt2agent", "subs available: ${subFiles.map { it.name }}, picked: $subName")
 
         return Transcript(
             title = info.optString("title"),
@@ -155,7 +157,9 @@ class TranscriptFetcher(private val context: Context) {
     }
 
     private fun cacheKey(videoUrl: String): String =
-        MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
+        // The v2- prefix invalidates entries written with a different subtitle
+        // preference order (they hold the wrong language).
+        "v2-" + MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
             .joinToString("") { "%02x".format(it) }
 
     private fun lastUpdateAgoMillis(): Long =
@@ -211,13 +215,16 @@ internal fun lineTimeMs(line: String): Long {
 }
 
 /**
- * Picks the subtitle file by preference: original-language track (`-orig`), device
- * locale, English. The name list is never empty when called.
+ * Picks the subtitle file by preference: device locale, original-language track
+ * (`-orig`, unreliable when creators mislabel the video language), English.
+ * Within a language the original track wins over the machine-translated one.
+ * The name list is never empty when called.
  */
 internal fun pickSubtitle(names: List<String>, locale: String): String? {
     if (names.isEmpty()) return null
-    for (pref in listOf("-orig", locale, "en")) {
-        names.firstOrNull { it.contains(pref, ignoreCase = true) }?.let { return it }
+    for (pref in listOf(locale, "-orig", "en")) {
+        val matches = names.filter { it.contains(pref, ignoreCase = true) }
+        (matches.firstOrNull { it.contains("-orig") } ?: matches.firstOrNull())?.let { return it }
     }
     return names.first()
 }

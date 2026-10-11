@@ -62,8 +62,10 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 - `updateYoutubeDL(STABLE)` runs at most every 72 hours (SharedPreferences timestamp),
   asynchronously on its own thread; a failed fetch (except "no transcript") forces a
   redownload and one retry synchronously — `updateBinary()` is synchronized.
-- Subtitle preference order: original track (`-orig`), device locale, English;
-  `pickSubtitle` selects deterministically among the files yt-dlp wrote.
+- Subtitle preference order: device locale (its `-orig` track when present),
+  fallback original track, then English. Creators mislabel video languages, so
+  `-orig` alone is not trustworthy; `pickSubtitle` logs the available files and
+  the one it picks.
 - Fetch failures show `activity_error` (message + Retry button) instead of a toast.
 - Cache: `cacheDir/transcripts/<md5-of-url>.json`, 7-day TTL; read before init, write
   after a successful fetch.

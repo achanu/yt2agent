@@ -162,18 +162,23 @@ class TranscriptTest {
     }
 
     @Test
-    fun picksOriginalTrackOverLocaleAndEnglish() {
+    fun picksDeviceLocaleFirst() {
         assertEquals(
-            "sub.es-orig.json3",
+            "sub.fr.json3",
             pickSubtitle(listOf("sub.en.json3", "sub.es-orig.json3", "sub.fr.json3"), "fr"),
+        )
+        // Within the locale, the original track wins over the translated one.
+        assertEquals(
+            "sub.fr-orig.json3",
+            pickSubtitle(listOf("sub.fr.json3", "sub.fr-orig.json3"), "fr"),
         )
     }
 
     @Test
-    fun picksDeviceLocaleWhenNoOriginalTrack() {
+    fun fallsBackToOriginalTrackWhenLocaleMissing() {
         assertEquals(
-            "sub.fr.json3",
-            pickSubtitle(listOf("sub.en.json3", "sub.fr.json3"), "fr"),
+            "sub.en-orig.json3",
+            pickSubtitle(listOf("sub.en-orig.json3", "sub.en.json3"), "fr"),
         )
     }
 
