@@ -1,5 +1,6 @@
 package info.chanu.yt2agent
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -7,25 +8,61 @@ import org.junit.Test
 class TranscriptTest {
 
     @Test
-    fun extractsVideoIdFromSharedText() {
+    fun extractsFirstUrlFromSharedText() {
         assertEquals(
-            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            findVideoUrl("Check this out https://youtu.be/dQw4w9WgXcQ?si=abc123"),
+            "https://youtu.be/dQw4w9WgXcQ?si=abc123",
+            findSharedUrl("Check this out https://youtu.be/dQw4w9WgXcQ?si=abc123"),
         )
         assertEquals(
-            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            findVideoUrl("https://m.youtube.com/watch?app=desktop&v=dQw4w9WgXcQ"),
+            "https://m.youtube.com/watch?app=desktop&v=dQw4w9WgXcQ",
+            findSharedUrl("https://m.youtube.com/watch?app=desktop&v=dQw4w9WgXcQ"),
         )
         assertEquals(
-            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            findVideoUrl("https://www.youtube.com/shorts/dQw4w9WgXcQ"),
+            "https://vimeo.com/22439234",
+            findSharedUrl("https://vimeo.com/22439234"),
         )
     }
 
     @Test
-    fun returnsNullWhenNoYoutubeLink() {
-        assertNull(findVideoUrl("hello world"))
-        assertNull(findVideoUrl("https://vimeo.com/22439234"))
+    fun stripsTrailingPunctuationFromUrl() {
+        assertEquals(
+            "https://youtu.be/dQw4w9WgXcQ",
+            findSharedUrl("Regarde https://youtu.be/dQw4w9WgXcQ."),
+        )
+    }
+
+    @Test
+    fun returnsNullWhenNoUrl() {
+        assertNull(findSharedUrl("hello world"))
+    }
+
+    @Test
+    fun insertsChapterMarkersAtTheirTimestamps() {
+        val transcript = "[00:00] intro\n[01:00] milieu\n[02:00] fin"
+        val info = JSONObject(
+            """{"chapters": [
+                {"start_time": 0, "title": "Début"},
+                {"start_time": 90, "title": "Après"}
+            ]}""",
+        )
+
+        assertEquals(
+            "[00:00] [Chapitre] Début\n[00:00] intro\n[01:00] milieu\n" +
+                "[01:30] [Chapitre] Après\n[02:00] fin",
+            insertChapters(transcript, info),
+        )
+    }
+
+    @Test
+    fun insertChaptersLeavesTranscriptAloneWhenNone() {
+        assertEquals(
+            "[00:00] seul",
+            insertChapters("[00:00] seul", JSONObject("""{"chapters": []}""")),
+        )
+        assertEquals(
+            "[00:00] seul",
+            insertChapters("[00:00] seul", JSONObject("{}")),
+        )
     }
 
     @Test

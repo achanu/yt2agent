@@ -16,7 +16,7 @@ class ShareActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val videoUrl = intent?.getStringExtra(Intent.EXTRA_TEXT)?.let(::findVideoUrl)
+        val videoUrl = intent?.getStringExtra(Intent.EXTRA_TEXT)?.let(::findSharedUrl)
         if (videoUrl == null) {
             Toast.makeText(this, R.string.no_youtube_link, Toast.LENGTH_LONG).show()
             finish()
@@ -84,11 +84,10 @@ private fun firstErrorLine(e: Exception): String =
     e.message?.lineSequence()?.firstOrNull { "ERROR" in it } ?: e.message ?: e.toString()
 
 /**
- * Extracts a canonical watch URL from shared text, or returns null if it contains no
- * YouTube link.
+ * Extracts the first URL from shared text, or null if it contains none. Any URL
+ * accepted by yt-dlp works (YouTube, Vimeo, PeerTube, ...).
  */
-internal fun findVideoUrl(sharedText: String): String? =
-    videoIdRegex.find(sharedText)?.let { "https://www.youtube.com/watch?v=${it.groupValues[1]}" }
+internal fun findSharedUrl(sharedText: String): String? =
+    urlRegex.find(sharedText)?.value?.trimEnd('.', ',', ')')
 
-private val videoIdRegex =
-    Regex("""(?:youtube\.com/(?:watch\?\S*?v=|shorts/|embed/)|youtu\.be/)([\w-]{11})""")
+private val urlRegex = Regex("""https?://\S+""")

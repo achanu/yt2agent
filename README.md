@@ -15,12 +15,15 @@ YouTube app → Share → yt2agent → transcript → app of your choice.
 
 - `ShareActivity` receives an `ACTION_SEND` (text/plain) intent, extracts the video ID
   from the shared text (`youtu.be/`, `watch?v=`, `shorts/`, `embed/`).
-- `TranscriptFetcher` runs two yt-dlp passes **in parallel**:
-  - `--dump-single-json` for the metadata (title, description, URL);
-  - `--write-subs --write-auto-subs --sub-format json3 --skip-download` for the
-    transcript in the device language (fallback English).
-- The json3 captions are flattened to timestamped plain text: one `[MM:SS]` line per
-  caption (auto-caption `aAppend` continuation events joined into their line).
+- `TranscriptFetcher` runs a single yt-dlp pass that writes both the metadata
+  (`--write-info-json`: title, description, URL, chapters) and the json3
+  captions (`--write-subs --write-auto-subs --skip-download`), in the device
+  language with English fallback. Results are cached for 7 days, so sharing the
+  same video again is instant and works offline.
+- Any URL accepted by yt-dlp works (YouTube, Vimeo, PeerTube, ...); the first
+  URL found in the shared text is used.
+- The json3 captions are flattened to timestamped plain text: one `[MM:SS]` line
+  per caption, with `[Chapitre]` markers inserted when the video has chapters.
 - The title is shown in the progress UI while the transcript downloads.
 - The result is re-shared via `ACTION_SEND`:
 
@@ -31,6 +34,7 @@ Video description
 
 Source: youtu.be/dQw4w9WgXcQ
 
+[00:00] [Chapitre] Introduction
 [00:00] first line of the transcript
 [00:03] second line…
 ```
@@ -43,7 +47,7 @@ subject (`EXTRA_SUBJECT`).
 ## Toolchain
 
 JDK 25 (Temurin LTS), Gradle 9.8.1, Android Gradle Plugin 9.4.1 (built-in Kotlin
-support — no separate Kotlin plugin), compileSdk 36 / minSdk 24 / targetSdk 35.
+support — no separate Kotlin plugin), compileSdk 36 / minSdk 24 / targetSdk 35, arm64-v8a + armeabi-v7a only (no x86), R8-minified release.
 yt-dlp via [youtubedl-android](https://github.com/junkfood02/youtubedl-android) 0.18.1
 (yt-dlp + Python bundled in the AAR, package `com.yausername.youtubedl_android`).
 

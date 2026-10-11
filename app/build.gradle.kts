@@ -12,8 +12,13 @@ android {
         applicationId = "info.chanu.yt2agent"
         minSdk = 24
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.1.1"
+        versionCode = 6
+        versionName = "0.2.0"
+
+        ndk {
+            // x86/x86_64 only serve emulators; this halves the APK size.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     // Release signing lives in keystore.properties (gitignored); unsigned without it.
@@ -26,10 +31,16 @@ android {
             keyAlias = props.getProperty("keyAlias")
             keyPassword = props.getProperty("keyPassword")
         }
-        buildTypes {
-            release {
-                signingConfig = signingConfigs.getByName("release")
-            }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            if (keystoreProps.exists()) signingConfig = signingConfigs.getByName("release")
         }
     }
 

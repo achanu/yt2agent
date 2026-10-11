@@ -3,9 +3,9 @@
 ## Project
 
 yt2agent: Android app registered as a share target (`ACTION_SEND`, text/plain). Receives
-a YouTube link shared from the YouTube app, fetches the video transcript with yt-dlp,
-and re-shares the plain-text transcript to any app. Model: Scrambled Exif (share in →
-transform → share out). No main UI, no launcher activity.
+a URL shared from any app, fetches the video transcript with yt-dlp, and re-shares the
+timestamped transcript to any app — typically an AI agent app. Model: Scrambled Exif
+(share in → transform → share out). No main UI, no launcher activity.
 
 ## Toolchain
 
@@ -16,25 +16,32 @@ transform → share out). No main UI, no launcher activity.
 - Android SDK at `$HOME/Documents/tools/android-sdk` (platform 36, build-tools 36),
   wired via `local.properties`.
 - minSdk 24, targetSdk 35, Java/Kotlin bytecode level 17.
+- ABIs limited to arm64-v8a + armeabi-v7a (`ndk.abiFilters`); x86 would only serve emulators.
+- Release is R8-minified; `proguard-rules.pro` keeps the whole
+  `com.yausername.youtubedl_android` tree (native code may reflect into it).
 - `packaging.jniLibs.useLegacyPackaging = true` is required: youtubedl-android reads its
   bundled Python environment from extracted `.so` files on disk; without it `init()`
   fails with "failed to initialize" on every run.
+- Release signing lives in `keystore.properties` (gitignored, path
+  `$HOME/Documents/tools/yt2agent-release.jks`); builds are unsigned without it.
 
 ## Stack
 
 - Kotlin, plain `android.app.Activity` (no Compose, no AppCompat, no DI).
 - yt-dlp via `io.github.junkfood02.youtubedl-android:library:0.18.1`, classes in
   `com.yausername.youtubedl_android` (underscore package, not `...youtubedl`).
-- org.json (Android built-in) for json3 caption parsing.
+- org.json (Android built-in) for json3 caption and metadata parsing.
 
 ## Layout
 
-- `app/src/main/java/dev/glucose/yt2agent/ShareActivity.kt` — intent handling, URL
-  extraction (`findVideoUrl`), share out.
-- `app/src/main/java/dev/glucose/yt2agent/TranscriptFetcher.kt` — yt-dlp invocation and
-  `parseJson3` flattening to `[MM:SS]`-timestamped lines.
-- `app/src/test/java/dev/glucose/yt2agent/TranscriptTest.kt` — unit tests for the pure
-  logic (URL regex, json3 parsing).
+- `app/src/main/java/info/chanu/yt2agent/ShareActivity.kt` — intent handling, first-URL
+  extraction (`findSharedUrl`), share-text building (`buildShareText`,
+  `stripLinkSchemes`), share out.
+- `app/src/main/java/info/chanu/yt2agent/TranscriptFetcher.kt` — single yt-dlp pass
+  (`--write-info-json` + json3 captions), 7-day transcript cache, `parseJson3`
+  flattening, `insertChapters`, `formatTime`.
+- `app/src/test/java/info/chanu/yt2agent/TranscriptTest.kt` — unit tests for the pure
+  logic (URL extraction, json3 parsing, chapters, share text).
 
 ## Conventions
 
@@ -43,15 +50,22 @@ transform → share out). No main UI, no launcher activity.
 - Pure logic (parsing, regexes) goes in top-level `internal` functions so it is unit
   testable without Android.
 - `YoutubeDL.init()` and `execute()` are blocking; call them only from a background
-  thread.
+  thread. The title poller thread surfaces the title as soon as `sub.info.json` lands.
+- One yt-dlp run per fetch: metadata and subtitles come from the same
+  `--write-info-json` + `--write-subs` invocation. Do not reintroduce a second
+  extraction pass (it doubles YouTube API pressure and 429 risk).
 - Fetch options are load-bearing against YouTube 429s: `--ignore-errors`,
   `--retries/--retry-sleep`, and `--extractor-args youtube:player_client=android_vr`
   (the library cannot impersonate a browser, so the default client gets blocked).
 - `updateYoutubeDL(STABLE)` runs at most every 72 hours (SharedPreferences timestamp);
   a failed fetch (except "no transcript") forces a redownload and one retry.
+- Cache: `cacheDir/transcripts/<md5-of-url>.json`, 7-day TTL; read before init, write
+  after a successful fetch.
 - Error surface is a Toast + `finish()`. Toast text is filtered to the first
   `ERROR` line (`firstErrorLine`), because `YoutubeDLException` messages embed the
   whole yt-dlp stderr including harmless ffmpeg warnings.
+- Shared text contains no clickable URL: destination agent apps link-sniff and
+  discard the rest. `stripLinkSchemes` + scheme-less `Source:` line handle this.
 - Deliberate shortcuts are marked with `ponytail:` comments.
 - Do not trim text inside `aAppend` continuation events: the leading space is
   significant in auto-captions.
@@ -59,7 +73,7 @@ transform → share out). No main UI, no launcher activity.
 ## Build and test
 
 ```
-JAVA_HOME=$HOME/Documents/tools/jdk25 ./gradlew :app:testDebugUnitTest :app:assembleDebug
+JAVA_HOME=$HOME/Documents/tools/jdk25 ./gradlew :app:testDebugUnitTest :app:assembleRelease
 ```
 
 If dependency resolution hangs (dead sockets to dl.google.com), re-run with
@@ -69,5 +83,7 @@ If dependency resolution hangs (dead sockets to dl.google.com), re-run with
 
 - Subtitle language: device locale then English, no picker (`ponytail:` in
   TranscriptFetcher).
+- json3 captions only: sites whose extractors do not expose json3 report
+  "no transcript" (`ponytail:` in TranscriptFetcher).
 - Bot detection: if YouTube blocks the default yt-dlp client, update the bundled
   yt-dlp via `updateYoutubeDL`.
