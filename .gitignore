@@ -3,6 +3,7 @@
 .idea/
 .kotlin/
 local.properties
+keystore.properties
 build/
 captures/
 .externalNativeBuild/
