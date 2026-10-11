@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" width="96" alt="yt2agent logo">
+</p>
+
 # yt2agent
 
 Android app that appears in the Android share sheet of the YouTube app, downloads the
@@ -31,9 +35,10 @@ Source: youtu.be/dQw4w9WgXcQ
 [00:03] second line…
 ```
 
-The source line is deliberately scheme-less: agent/chat apps that sniff real URLs
-would otherwise discard everything but the link. The full URL is passed as the
-share subject (`EXTRA_SUBJECT`).
+The source line is deliberately scheme-less, and any URL inside the title or the
+description is scheme-stripped too: agent/chat apps that sniff real URLs would
+otherwise discard everything but the link. The full URL is passed as the share
+subject (`EXTRA_SUBJECT`).
 
 ## Toolchain
 

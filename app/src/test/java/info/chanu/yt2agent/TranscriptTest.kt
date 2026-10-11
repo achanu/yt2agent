@@ -107,4 +107,20 @@ class TranscriptTest {
             shortUrl("https://youtu.be/dQw4w9WgXcQ"),
         )
     }
+
+    @Test
+    fun stripsSchemesFromUrlsInTitleAndDescription() {
+        val transcript = Transcript(
+            title = "Regarde twitter.com/x",
+            description = "Plus d'infos sur https://exemple.fr/page et www.site.com/a",
+            url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            text = "[00:00] bonjour",
+        )
+
+        assertEquals(
+            "Regarde twitter.com/x\n\nPlus d'infos sur exemple.fr/page et site.com/a\n\n" +
+                "Source: youtu.be/dQw4w9WgXcQ\n\n[00:00] bonjour",
+            buildShareText(transcript),
+        )
+    }
 }

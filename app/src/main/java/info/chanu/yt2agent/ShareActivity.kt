@@ -57,12 +57,12 @@ class ShareActivity : Activity() {
 
 /**
  * Builds the shared text: title, description, video source, then the timestamped
- * transcript. The source uses a scheme-less form (`youtu.be/<id>`) because destination
- * apps that sniff links discard everything else from a text containing a real URL.
+ * transcript. All URLs are scheme-stripped (`stripLinkSchemes`): destination apps
+ * that sniff links discard everything else from a text containing a real URL.
  */
 internal fun buildShareText(transcript: Transcript): String = buildString {
-    if (transcript.title.isNotEmpty()) appendLine(transcript.title).appendLine()
-    if (transcript.description.isNotEmpty()) appendLine(transcript.description).appendLine()
+    if (transcript.title.isNotEmpty()) appendLine(stripLinkSchemes(transcript.title)).appendLine()
+    if (transcript.description.isNotEmpty()) appendLine(stripLinkSchemes(transcript.description)).appendLine()
     appendLine("Source: ${shortUrl(transcript.url)}").appendLine()
     append(transcript.text)
 }
@@ -71,6 +71,10 @@ internal fun shortUrl(url: String): String =
     url.removePrefix("https://www.youtube.com/watch?v=").let {
         if (it == url) url else "youtu.be/$it"
     }
+
+internal fun stripLinkSchemes(text: String): String =
+    text.replace(Regex("""\bhttps?://""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\bwww\.""", RegexOption.IGNORE_CASE), "")
 
 /**
  * YoutubeDLException messages embed the whole yt-dlp stderr including warnings;
