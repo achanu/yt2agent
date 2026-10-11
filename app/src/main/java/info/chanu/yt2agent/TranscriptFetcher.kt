@@ -22,7 +22,7 @@ class TranscriptFetcher(private val context: Context) {
      * thread. [onTitle] is invoked on the calling thread as soon as the title is
      * known, before the longer transcript download starts.
      *
-     * The yt-dlp binary is checked for updates once a day; a failed fetch forces a
+     * The yt-dlp binary is checked for updates every 72 hours; a failed fetch forces a
      * redownload and one retry (a stale binary is the usual cause of YouTube 429s).
      *
      * @throws IllegalStateException when the video has no transcript
@@ -32,7 +32,7 @@ class TranscriptFetcher(private val context: Context) {
         // Blocking on first call only: unpacks the bundled yt-dlp + python.
         YoutubeDL.getInstance().init(context)
 
-        if (lastUpdateAgoMillis() > DAY_MILLIS) updateBinary()
+        if (lastUpdateAgoMillis() > UPDATE_TTL_MILLIS) updateBinary()
 
         return try {
             fetchTranscript(videoUrl, onTitle)
@@ -84,7 +84,7 @@ class TranscriptFetcher(private val context: Context) {
     }
 
     private companion object {
-        const val DAY_MILLIS = 24L * 60 * 60 * 1000
+        const val UPDATE_TTL_MILLIS = 72L * 60 * 60 * 1000
         const val KEY_LAST_UPDATE = "yt_dlp_last_update"
     }
 

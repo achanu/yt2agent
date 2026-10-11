@@ -69,7 +69,7 @@ building.
 ## Notes
 
 - First transcript fetch is slow: the library unpacks yt-dlp and Python on first use.
-- The bundled yt-dlp binary is checked for updates once a day; a failed fetch forces a
+- The bundled yt-dlp binary is checked for updates every 72 hours; a failed fetch forces a
   redownload and one retry. The fetch also uses
   `--extractor-args youtube:player_client=android_vr` with retries: YouTube blocks
   old or non-impersonated clients with HTTP 429.
