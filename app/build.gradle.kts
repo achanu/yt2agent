@@ -10,9 +10,9 @@ android {
 
     defaultConfig {
         applicationId = "info.chanu.yt2agent"
-        minSdk = 26
+        minSdk = 24
         targetSdk = 35
-        versionCode = 3
+        versionCode = 4
         versionName = "0.1.0"
     }
 

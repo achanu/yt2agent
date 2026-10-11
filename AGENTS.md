@@ -15,7 +15,7 @@ transform → share out). No main UI, no launcher activity.
   `org.jetbrains.kotlin.android` plugin (build fails with a duplicate `kotlin` extension).
 - Android SDK at `$HOME/Documents/tools/android-sdk` (platform 36, build-tools 36),
   wired via `local.properties`.
-- minSdk 26, targetSdk 35, Java/Kotlin bytecode level 17.
+- minSdk 24, targetSdk 35, Java/Kotlin bytecode level 17.
 - `packaging.jniLibs.useLegacyPackaging = true` is required: youtubedl-android reads its
   bundled Python environment from extracted `.so` files on disk; without it `init()`
   fails with "failed to initialize" on every run.
