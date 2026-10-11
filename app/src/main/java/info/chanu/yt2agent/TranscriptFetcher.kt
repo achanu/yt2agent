@@ -78,7 +78,8 @@ class TranscriptFetcher(private val context: Context) {
             addOption("--skip-download")
             addOption("--write-subs")
             addOption("--write-auto-subs")
-            addOption("--sub-langs", subLangs)
+            // ponytail: device locale + English only; add a language picker if other languages matter
+            addOption("--sub-langs", "${Locale.getDefault().language},en")
             addOption("--sub-format", "json3")
             addOption("-o", File(outDir, "sub").absolutePath)
             // YouTube 429s timedtext requests from impersonation-less clients.
@@ -93,9 +94,6 @@ class TranscriptFetcher(private val context: Context) {
             ?: error(context.getString(R.string.no_transcript))
         return parseJson3(subFile.readText())
     }
-
-    // ponytail: device locale + English only; add a language picker if other languages matter
-    private val subLangs = "${Locale.getDefault().language},en"
 }
 
 /**

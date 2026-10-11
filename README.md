@@ -43,7 +43,7 @@ subject (`EXTRA_SUBJECT`).
 ## Toolchain
 
 JDK 25 (Temurin LTS), Gradle 9.8.1, Android Gradle Plugin 9.4.1 (built-in Kotlin
-support — no separate Kotlin plugin), compileSdk 36 / minSdk 24 / targetSdk 35.
+support — no separate Kotlin plugin), compileSdk 36 / minSdk 26 / targetSdk 35.
 yt-dlp via [youtubedl-android](https://github.com/junkfood02/youtubedl-android) 0.18.1
 (yt-dlp + Python bundled in the AAR, package `com.yausername.youtubedl_android`).
 
