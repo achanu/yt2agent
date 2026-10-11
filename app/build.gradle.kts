@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "dev.glucose.yt2agent"
+    namespace = "info.chanu.yt2agent"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "dev.glucose.yt2agent"
+        applicationId = "info.chanu.yt2agent"
         minSdk = 24
         targetSdk = 35
         versionCode = 2

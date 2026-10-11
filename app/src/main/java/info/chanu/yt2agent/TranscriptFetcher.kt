@@ -1,4 +1,4 @@
-package dev.glucose.yt2agent
+package info.chanu.yt2agent
 
 import android.content.Context
 import com.yausername.youtubedl_android.YoutubeDL

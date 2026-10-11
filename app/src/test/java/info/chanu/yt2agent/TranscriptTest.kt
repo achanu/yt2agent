@@ -1,4 +1,4 @@
-package dev.glucose.yt2agent
+package info.chanu.yt2agent
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
