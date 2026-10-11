@@ -47,7 +47,8 @@ transform → share out). No main UI, no launcher activity.
 - Fetch options are load-bearing against YouTube 429s: `--ignore-errors`,
   `--retries/--retry-sleep`, and `--extractor-args youtube:player_client=android_vr`
   (the library cannot impersonate a browser, so the default client gets blocked).
-  `updateYoutubeDL(STABLE)` runs before each fetch to keep the binary current.
+- `updateYoutubeDL(STABLE)` runs at most once a day (SharedPreferences timestamp);
+  a failed fetch (except "no transcript") forces a redownload and one retry.
 - Error surface is a Toast + `finish()`. Toast text is filtered to the first
   `ERROR` line (`firstErrorLine`), because `YoutubeDLException` messages embed the
   whole yt-dlp stderr including harmless ffmpeg warnings.

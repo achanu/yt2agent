@@ -69,7 +69,8 @@ building.
 ## Notes
 
 - First transcript fetch is slow: the library unpacks yt-dlp and Python on first use.
-- The bundled yt-dlp binary is refreshed (`updateYoutubeDL`) before every fetch, and
-  the fetch uses `--extractor-args youtube:player_client=android_vr` with retries:
-  YouTube blocks old or non-impersonated clients with HTTP 429.
+- The bundled yt-dlp binary is checked for updates once a day; a failed fetch forces a
+  redownload and one retry. The fetch also uses
+  `--extractor-args youtube:player_client=android_vr` with retries: YouTube blocks
+  old or non-impersonated clients with HTTP 429.
 - No YouTube Data API key is needed; yt-dlp fetches captions like the web player does.

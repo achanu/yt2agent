@@ -15,25 +15,37 @@ data class Transcript(val title: String, val description: String, val url: Strin
  */
 class TranscriptFetcher(private val context: Context) {
 
+    private val prefs = context.getSharedPreferences("yt2agent", Context.MODE_PRIVATE)
+
     /**
      * Fetches the video metadata and transcript. Blocks; call from a background
      * thread. [onTitle] is invoked on the calling thread as soon as the title is
      * known, before the longer transcript download starts.
      *
+     * The yt-dlp binary is checked for updates once a day; a failed fetch forces a
+     * redownload and one retry (a stale binary is the usual cause of YouTube 429s).
+     *
      * @throws IllegalStateException when the video has no transcript
-     * @throws YoutubeDLException when yt-dlp fails
+     * @throws YoutubeDLException when yt-dlp fails even after the retry
      */
     fun fetch(videoUrl: String, onTitle: (String) -> Unit = {}): Transcript {
         // Blocking on first call only: unpacks the bundled yt-dlp + python.
         YoutubeDL.getInstance().init(context)
 
-        // YouTube rejects old yt-dlp clients; refresh the binary before fetching.
-        try {
-            YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel.STABLE)
-        } catch (e: Exception) {
-            // Best effort: fetch with the bundled version when the update server is unreachable.
-        }
+        if (lastUpdateAgoMillis() > DAY_MILLIS) updateBinary()
 
+        return try {
+            fetchTranscript(videoUrl, onTitle)
+        } catch (e: IllegalStateException) {
+            // No transcript on this video: a fresh binary would not change that.
+            throw e
+        } catch (e: Exception) {
+            updateBinary()
+            fetchTranscript(videoUrl, onTitle)
+        }
+    }
+
+    private fun fetchTranscript(videoUrl: String, onTitle: (String) -> Unit): Transcript {
         // Metadata and subtitles run concurrently so the title can be shown during
         // the fetch without extending total wall time.
         // ponytail: parallel yt-dlp processes; serialize if the library ever chokes on it.
@@ -57,6 +69,23 @@ class TranscriptFetcher(private val context: Context) {
             url = info.optString("webpage_url").ifEmpty { videoUrl },
             text = text,
         )
+    }
+
+    private fun lastUpdateAgoMillis(): Long =
+        System.currentTimeMillis() - prefs.getLong(KEY_LAST_UPDATE, 0L)
+
+    private fun updateBinary() {
+        try {
+            YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel.STABLE)
+            prefs.edit().putLong(KEY_LAST_UPDATE, System.currentTimeMillis()).apply()
+        } catch (e: Exception) {
+            // Best effort: fetch with the binary we have when the update server is unreachable.
+        }
+    }
+
+    private companion object {
+        const val DAY_MILLIS = 24L * 60 * 60 * 1000
+        const val KEY_LAST_UPDATE = "yt_dlp_last_update"
     }
 
     private fun infoJson(videoUrl: String): String {
