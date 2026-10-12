@@ -48,16 +48,16 @@ class ShareActivity : Activity() {
             return
         }
         setContentView(R.layout.activity_share)
-        wireCheckbox(R.id.include_description, KEY_INCLUDE_DESCRIPTION)
-        wireCheckbox(R.id.remove_sponsors, KEY_REMOVE_SPONSORS)
-        wireCheckbox(R.id.remove_selfpromo, KEY_REMOVE_SELF_PROMO)
+        wireCheckbox(R.id.include_description, KEY_INCLUDE_DESCRIPTION, default = true)
+        wireCheckbox(R.id.remove_sponsors, KEY_REMOVE_SPONSORS, default = false)
+        wireCheckbox(R.id.remove_selfpromo, KEY_REMOVE_SELF_PROMO, default = false)
         startFetch()
     }
 
     /** Binds a checkbox to its persistent preference. */
-    private fun wireCheckbox(id: Int, key: String) {
+    private fun wireCheckbox(id: Int, key: String, default: Boolean) {
         val checkbox = findViewById<CheckBox>(id)
-        checkbox.isChecked = prefs.getBoolean(key, false)
+        checkbox.isChecked = prefs.getBoolean(key, default)
         checkbox.setOnCheckedChangeListener { _, checked ->
             prefs.edit().putBoolean(key, checked).apply()
         }
