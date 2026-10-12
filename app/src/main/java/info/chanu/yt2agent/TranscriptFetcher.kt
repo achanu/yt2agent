@@ -202,9 +202,9 @@ class TranscriptFetcher(private val context: Context) {
         File(File(context.cacheDir, "transcripts"), "missing-${cacheKey(videoUrl)}.json")
 
     private fun cacheKey(videoUrl: String): String =
-        // The v3- prefix invalidates entries written with a different subtitle
+        // The v4- prefix invalidates entries written with a different subtitle
         // preference order (they hold the wrong language).
-        "v3-" + MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
+        "v4-" + MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
             .joinToString("") { "%02x".format(it) }
 
     private fun lastUpdateAgoMillis(): Long =
@@ -288,15 +288,25 @@ internal fun destinationTitle(line: String): String =
         .substringBeforeLast(".")
 
 /**
- * Picks the subtitle file by preference: the `-orig` track of the device locale, any
- * other `-orig` track (the real ASR, whatever the language — YouTube's translations
- * degrade it), then the locale, then English. `-orig` tracks are genuine ASR even
- * when creators mislabel the video language; translated tracks are not.
+ * Picks the subtitle file by preference. `-orig` tracks are the genuine ASR
+ * (translations are not): a single `-orig` track is taken as is; among several —
+ * YouTube's multi-language ASR emits many, all marked "Original" — English wins
+ * (the spoken language is undetectable: machine translations read like real text),
+ * then the device locale. Without `-orig` tracks, prefer the locale then English.
+ * ponytail: a French video whose multi-ASR set has no dominant English audio
+ * still yields English; a language picker would lift this.
  * The name list is never empty when called.
  */
 internal fun pickSubtitle(names: List<String>, locale: String): String? {
     if (names.isEmpty()) return null
-    for (pref in listOf("$locale-orig", "-orig", locale, "en")) {
+    val origs = names.filter { it.contains("-orig", ignoreCase = true) }
+    if (origs.size == 1) return origs.first()
+    if (origs.isNotEmpty()) {
+        return origs.firstOrNull { it.contains("en", ignoreCase = true) }
+            ?: origs.firstOrNull { it.contains(locale, ignoreCase = true) }
+            ?: origs.first()
+    }
+    for (pref in listOf(locale, "en")) {
         names.firstOrNull { it.contains(pref, ignoreCase = true) }?.let { return it }
     }
     return names.first()

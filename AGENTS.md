@@ -64,10 +64,10 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 - `updateYoutubeDL(STABLE)` runs at most every 72 hours (SharedPreferences timestamp),
   asynchronously on its own thread; a failed fetch (except "no transcript") forces a
   redownload and one retry synchronously — `updateBinary()` is synchronized.
-- Subtitle preference order: `<locale>-orig`, then any `-orig` track (the real ASR
-  whatever the language — YouTube's machine translations degrade the text), then the
-  locale, then English. `-orig` tracks stay genuine even when creators mislabel the
-  video language; `pickSubtitle` logs the available files and the one it picks.
+- Subtitle preference: a single `-orig` track is taken as is (genuine ASR); among
+  several — YouTube's multi-language ASR emits many, all marked "Original", and the
+  spoken language is undetectable — English wins, then the locale; without `-orig`
+  tracks, locale then English. `pickSubtitle` logs the available files and the pick.
 - Caption formats: json3 preferred, then vtt/srt (`--sub-format "json3/vtt/srt"`);
   `parseVttOrSrt` handles both (shared cue-block shape). Non-YouTube sites without
   json3 work through vtt/srt.

@@ -185,16 +185,12 @@ class TranscriptTest {
     }
 
     @Test
-    fun prefersLocaleOrigTrackWhenItExists() {
+    fun singleOrigTrackIsTakenAsIs() {
         // A French video mislabeled as English by its creator: fr-orig is the real ASR.
         assertEquals(
             "sub.fr-orig.json3",
-            pickSubtitle(listOf("sub.en-orig.json3", "sub.fr-orig.json3", "sub.fr.json3"), "fr"),
+            pickSubtitle(listOf("sub.fr-orig.json3", "sub.fr.json3", "sub.en.json3"), "fr"),
         )
-    }
-
-    @Test
-    fun prefersAnyOrigTrackOverTranslatedLocale() {
         // An English video on a French phone: en-orig is the real ASR,
         // sub.fr.json3 is a machine translation of it.
         assertEquals(
@@ -204,6 +200,27 @@ class TranscriptTest {
         assertEquals(
             "sub.es-orig.json3",
             pickSubtitle(listOf("sub.en.json3", "sub.es-orig.json3", "sub.fr.json3"), "fr"),
+        )
+    }
+
+    @Test
+    fun multipleOrigTracksPreferEnglish() {
+        // YouTube's multi-language ASR: the same audio transcribed in many
+        // languages, all marked "Original" — the spoken language is undetectable.
+        assertEquals(
+            "sub.en-orig.json3",
+            pickSubtitle(
+                listOf("sub.ar-orig.json3", "sub.en-orig.json3", "sub.fr-FR-orig.json3", "sub.fr.json3"),
+                "fr",
+            ),
+        )
+    }
+
+    @Test
+    fun multipleOrigTracksWithoutEnglishFallBackToLocale() {
+        assertEquals(
+            "sub.fr-FR-orig.json3",
+            pickSubtitle(listOf("sub.ar-orig.json3", "sub.fr-FR-orig.json3"), "fr"),
         )
     }
 
