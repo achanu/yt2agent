@@ -54,7 +54,8 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 - `YoutubeDL.init()` and `execute()` are blocking; call them only from a background
   thread. yt-dlp writes the info file at the END of the run, so the early display
   title comes from the first `[download] Destination:` line (the output template
-  embeds the title); `destinationTitle` strips the directory and extensions.
+  embeds the title); `destinationTitle` strips the directory, the known subtitle
+  extension, then the language code — titles containing dots keep their dots.
 - One yt-dlp run per fetch: metadata and subtitles come from the same
   `--write-info-json` + `--write-subs` invocation. Do not reintroduce a second
   extraction pass (it doubles YouTube API pressure and 429 risk).
@@ -73,8 +74,11 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   spoken language is undetectable — English wins, then the locale; without `-orig`
   tracks, locale then English. `pickSubtitle` logs the available files and the pick.
 - Caption formats: json3 preferred, then vtt/srt (`--sub-format "json3/vtt/srt"`);
-  `parseVttOrSrt` handles both (shared cue-block shape). Non-YouTube sites without
-  json3 work through vtt/srt.
+  `parseVttOrSrt` handles both (shared cue-block shape) and merges rolling
+  auto-caption lines (a cue starting with the previous one is its replacement).
+  `parseJson3` slices the raw json between `tStartMs` markers — no JSONObject tree,
+  which cost 5-10x the file size in heap and OOM'd caption-heavy entries.
+  Non-YouTube sites without json3 work through vtt/srt.
 - Network frugality: `--sub-langs "en.*-orig,<locale>.*-orig,<locale>,en"` downloads
   only the tracks the selector can pick (multi-ASR videos expose 16 "-orig" tracks);
   `--retries 3 --retry-sleep 10` keeps 429-storm request counts low; transcripts are
@@ -88,7 +92,13 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   (`PLAYLIST_MAX`), output template `%(playlist_index)03d - %(title)s` so each video's
   info json and captions group by index prefix. Entries without captions are skipped,
   not fatal. The document is a playlist header plus `[i/N]` blocks (title, info line,
-  transcript); per-video descriptions and sources stay out. Resume: `--download-archive`
+  description when the "Include the description" checkbox is on, transcript); a
+  video the fetch could not fill gets a `[i/N] <no transcript>` marker line instead
+  of being silently omitted. Per-video sources stay out. Videos that failed
+  permanently (deleted/private, counted from yt-dlp ERROR lines via `deadVideoRegex`)
+  count as expected absences, so their playlist stays cacheable. Oversized files
+  (past `MAX_PARSE_BYTES`, 10 MB) are pruned from the subs dir after the parse.
+  Resume: `--download-archive`
   + `--force-download-archive` (required with `--skip-download`) in the subs dir; a
   `session.txt` marker (same playlist, < 1 h old) keeps the dir across retries — the
   fetch chain AND the Retry button continue after the failed entry instead of

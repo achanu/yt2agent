@@ -39,6 +39,9 @@ data class PlaylistTranscript(
     val complete: Boolean = true,
 )
 
+/** The playlist fetch cap: one document covers at most this many videos. */
+internal const val PLAYLIST_MAX = 30
+
 /**
  * Downloads a video transcript with yt-dlp and flattens it to plain text.
  */
@@ -259,16 +262,20 @@ class TranscriptFetcher(private val context: Context) {
             addOption("--force-download-archive")
         }
 
-        runPlaylistPass(request, onTitle, onStatus)
-        var playlist = parsePlaylistFiles(outDir, playlistUrl)
+        val deadIds = mutableSetOf<String>()
+        runPlaylistPass(request, onTitle, onStatus, deadIds)
+        var playlist = parsePlaylistFiles(outDir, playlistUrl, deadIds)
         // --ignore-errors swallows entry failures: a congested network returns
         // the playlist with holes. One more pass — the download archive makes it
         // cheap — refetches only the dropped entries.
         if (!playlist.complete) {
-            runPlaylistPass(request, onTitle, onStatus)
-            playlist = parsePlaylistFiles(outDir, playlistUrl)
+            runPlaylistPass(request, onTitle, onStatus, deadIds)
+            playlist = parsePlaylistFiles(outDir, playlistUrl, deadIds)
         }
         if (playlist.entries.isEmpty()) error(context.getString(R.string.no_transcript))
+        // The oversized files (multi-ASR info jsons, 10 MB+) are never read again:
+        // drop them. The small ones stay for the resume passes.
+        outDir.listFiles()?.filter { it.length() > MAX_PARSE_BYTES }?.forEach { it.delete() }
         return playlist
     }
 
@@ -276,12 +283,19 @@ class TranscriptFetcher(private val context: Context) {
         request: YoutubeDLRequest,
         onTitle: (String) -> Unit,
         onStatus: (String) -> Unit,
+        deadIds: MutableSet<String>,
     ) = synchronized(ytLock) {
         YoutubeDL.getInstance().execute(request, null) { _, _, line ->
             val text = line?.trim().orEmpty()
             if (text.isNotEmpty() && !text.startsWith("WARNING")) {
                 // The displayed title follows the run: the last entry written wins.
                 if (text.startsWith(DESTINATION_PREFIX)) onTitle(destinationTitle(text))
+                // ponytail: English match on yt-dlp error text; the messages are
+                // stable and a permanent hole is what tells a dead video apart
+                // from a network drop — without it, its playlist never caches.
+                if (text.startsWith("ERROR")) {
+                    deadVideoRegex.find(text)?.let { deadIds += it.groupValues[1] }
+                }
                 onStatus(text)
             }
         }
@@ -289,10 +303,15 @@ class TranscriptFetcher(private val context: Context) {
 
     /**
      * Parses the files yt-dlp left in [outDir] into a playlist, one info json at a
-     * time. [PlaylistTranscript.complete] compares the info json count with the
-     * entry count yt-dlp reported: entries missing files are fetch failures.
+     * time. [PlaylistTranscript.complete] compares the info json count (plus the
+     * videos that failed permanently: deleted or private) with the entry count
+     * yt-dlp reported: entries missing files are fetch failures.
      */
-    private fun parsePlaylistFiles(outDir: File, playlistUrl: String): PlaylistTranscript {
+    private fun parsePlaylistFiles(
+        outDir: File,
+        playlistUrl: String,
+        deadIds: Set<String>,
+    ): PlaylistTranscript {
         val files = outDir.listFiles().orEmpty()
         val groups = files.map { it.name }.groupBy { it.substringBefore(" - ") }
         val infoCount = files.count { it.name.endsWith(".info.json") }
@@ -348,7 +367,8 @@ class TranscriptFetcher(private val context: Context) {
             title = playlistTitle,
             total = if (infoTotal > 0) infoTotal else entries.size,
             entries = entries,
-            complete = infoTotal <= 0 || infoCount >= minOf(infoTotal, PLAYLIST_MAX),
+            complete = infoTotal <= 0 ||
+                infoCount + deadIds.size >= minOf(infoTotal, PLAYLIST_MAX),
         )
     }
 
@@ -560,7 +580,6 @@ class TranscriptFetcher(private val context: Context) {
     private companion object {
         val SUBTITLE_EXTENSIONS = setOf("json3", "vtt", "srt")
         const val SESSION_FILE = "session.txt"
-        const val PLAYLIST_MAX = 30
         // ponytail: 10 MB ≈ many hours of word-level captions; bigger files are
         // skipped — reading one into the heap OOMs (org.json needs the whole string).
         const val MAX_PARSE_BYTES = 10L * 1024 * 1024
@@ -652,16 +671,24 @@ internal fun lineTimeMs(line: String): Long {
 
 private const val DESTINATION_PREFIX = "[download] Destination: "
 
+// ponytail: English match on yt-dlp error text; the messages are stable, and a
+// permanent hole is what tells a dead video apart from a network drop.
+private val deadVideoRegex =
+    Regex("""\[youtube\] ([\w-]{11}): .*(unavailable|Private video|terminated|members-only)""")
+
+private val subtitleExtensionRegex = Regex("""\.(json3|vtt|srt)$""")
+private val languageCodeRegex = Regex("""\.[a-z]{2}(-[A-Za-z0-9]{2,8})?(-orig)?$""")
+
 /**
- * Extracts a display title from a `[download] Destination: <file>` yt-dlp line.
- * ponytail: a title containing dots is cut at the second-to-last dot; the exact
- * title still reaches the shared text via the info file.
+ * Extracts a display title from a `[download] Destination: <file>` yt-dlp line:
+ * the known subtitle extension, then the language code segment, are stripped —
+ * titles containing dots keep their dots.
  */
 internal fun destinationTitle(line: String): String =
-    line.removePrefix(DESTINATION_PREFIX)
-        .substringAfterLast('/')
-        .substringBeforeLast(".")
-        .substringBeforeLast(".")
+    languageCodeRegex.replace(
+        subtitleExtensionRegex.replace(line.removePrefix(DESTINATION_PREFIX).substringAfterLast('/'), ""),
+        "",
+    )
 
 /**
  * Picks the subtitle file by preference. `-orig` tracks are the genuine ASR
@@ -693,12 +720,11 @@ private val cueTimeRegex = Regex("""(?:(\d{1,2}):)?(\d{2}):(\d{2})[.,]\d{1,3}"""
 /**
  * Parses WebVTT or SRT captions — both share the cue-block shape: a timing line
  * followed by the caption text — into timestamped plain text. Cue tags are
- * stripped.
- * ponytail: no de-duplication of rolling auto-caption lines; YouTube always
- * serves json3 (handled by [parseJson3]) and other sites rarely roll VTT.
+ * stripped. Rolling auto-captions repeat a growing line cue after cue: the last
+ * version of each chain wins (youtube-dl's heuristic), so the text is not doubled.
  */
-internal fun parseVttOrSrt(text: String): String =
-    text.split(Regex("""\n\s*\n"""))
+internal fun parseVttOrSrt(text: String): String {
+    val cues = text.split(Regex("""\n\s*\n"""))
         .mapNotNull { block ->
             val lines = block.lines()
             val timingIndex = lines.indexOfFirst { cueTimeRegex.containsMatchIn(it) }
@@ -711,36 +737,71 @@ internal fun parseVttOrSrt(text: String): String =
                 .joinToString(" ") { it.trim() }
                 .replace(Regex("""<[^>]*>"""), "")
                 .trim()
-            if (caption.isEmpty()) null else "[${formatTime(startMs)}] $caption"
+            if (caption.isEmpty()) null else startMs to caption
         }
-        .joinToString("\n")
+
+    val merged = ArrayList<Pair<Long, String>>(cues.size)
+    for (cue in cues) {
+        val last = merged.lastOrNull()
+        if (last != null && cue.second.startsWith(last.second)) {
+            merged[merged.size - 1] = cue
+        } else {
+            merged.add(cue)
+        }
+    }
+    return merged.joinToString("\n") { "[${formatTime(it.first)}] ${it.second}" }
+}
+
+private val tStartRegex = Regex(""""tStartMs"\s*:\s*(\d+)""")
+private val appendRegex = Regex(""""aAppend"\s*:\s*1""")
+private val utf8Regex = Regex(""""utf8"\s*:\s*"((?:\\.|[^"\\])*)"""")
+private val unicodeEscapeRegex = Regex("""\\u([0-9a-fA-F]{4})""")
+private val simpleEscapeRegex = Regex("""\\(.)""")
+
+/** Unescapes the two escape forms JSON strings use in caption payloads. */
+private fun unescapeJson(escaped: String): String = unicodeEscapeRegex.replace(escaped) { m ->
+    m.groupValues[1].toInt(16).toChar().toString()
+}.let { simpleEscapeRegex.replace(it) { m ->
+    when (m.groupValues[1][0]) {
+        'n' -> "\n"
+        't' -> "\t"
+        'r' -> "\r"
+        'b' -> "\b"
+        'f' -> "\u000C"
+        else -> m.groupValues[1]
+    }
+} }
 
 /**
  * Flattens yt-dlp json3 captions to timestamped plain text, one `[MM:SS]` line per
  * caption, joining `aAppend` continuation events (auto-captions) into their line.
+ * The raw json is sliced between its tStartMs markers instead of going through a
+ * JSONObject tree — the tree cost 5-10x the file size in heap, which is what OOM'd
+ * on caption-heavy entries. Do not trim inside events: the leading space of
+ * `aAppend` text is significant in auto-captions.
  */
 internal fun parseJson3(json: String): String {
-    val events = JSONObject(json).getJSONArray("events")
     val lines = StringBuilder()
     var current = StringBuilder()
     var startMs = 0L
 
-    for (i in 0 until events.length()) {
-        val event = events.optJSONObject(i) ?: continue
-        val segs = event.optJSONArray("segs") ?: continue
-
+    val markers = tStartRegex.findAll(json).toList()
+    for (i in markers.indices) {
+        val chunkEnd = if (i + 1 < markers.size) markers[i + 1].range.first else json.length
+        val chunk = json.substring(markers[i].range.first, chunkEnd)
+        val utf8s = utf8Regex.findAll(chunk).toList()
+        if (utf8s.isEmpty()) continue
         val text = buildString {
-            for (j in 0 until segs.length()) {
-                append(segs.optJSONObject(j)?.optString("utf8") ?: "")
-            }
+            utf8s.forEach { append(unescapeJson(it.groupValues[1])) }
         }.replace('\n', ' ')
-
-        if (event.optInt("aAppend", 0) == 1) {
+        if (appendRegex.containsMatchIn(chunk)) {
             current.append(text)
         } else {
-            if (current.isNotBlank()) lines.appendLine("[${formatTime(startMs)}] ${current.trim()}")
+            if (current.isNotBlank()) {
+                lines.appendLine("[${formatTime(startMs)}] ${current.trim()}")
+            }
             current = StringBuilder(text)
-            startMs = event.optLong("tStartMs", 0L)
+            startMs = markers[i].groupValues[1].toLong()
         }
     }
     if (current.isNotBlank()) lines.appendLine("[${formatTime(startMs)}] ${current.trim()}")

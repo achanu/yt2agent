@@ -210,8 +210,10 @@ class ShareActivity : Activity() {
             playlist,
             Locale.getDefault(),
             getString(R.string.playlist_videos),
+            getString(R.string.no_transcript),
             prefs.getBoolean(KEY_REMOVE_SPONSORS, false),
             prefs.getBoolean(KEY_REMOVE_SELF_PROMO, false),
+            prefs.getBoolean(KEY_INCLUDE_DESCRIPTION, true),
         )
         shareOut(playlist.title.ifEmpty { videoUrl }, text, asFile = true)
     }
@@ -317,21 +319,36 @@ internal fun buildShareText(
 
 /**
  * Builds the shared playlist document: a header (title, video count), then one block
- * per video — "[i/N] title", metadata line, timestamped transcript. Per-video
- * descriptions and sources stay out: at 30 videos they would drown the transcripts.
+ * per video — "[i/N] title", metadata line, description, timestamped transcript. A
+ * video the fetch could not fill is marked with [missingLabel] instead of silently
+ * omitted: the agent should know the playlist has a hole there. Per-video sources
+ * stay out: at 30 videos they would drown the transcripts.
  */
 internal fun buildPlaylistDocument(
     playlist: PlaylistTranscript,
     locale: Locale,
     videosLabel: String,
+    missingLabel: String,
     removeSponsors: Boolean,
     removeSelfPromo: Boolean,
+    includeDescription: Boolean,
 ): String = buildString {
     if (playlist.title.isNotEmpty()) appendLine(stripLinkSchemes(playlist.title))
     appendLine(videosLabel.format(playlist.total)).appendLine()
-    playlist.entries.forEach { entry ->
+    val present = playlist.entries.associateBy { it.playlistIndex }
+    val expected = if (playlist.total > 0) minOf(playlist.total, PLAYLIST_MAX) else 0
+    val indexes = (present.keys + (1..expected)).distinct().sorted()
+    for (index in indexes) {
+        val entry = present[index]
+        if (entry == null) {
+            appendLine("[$index/${playlist.total}] $missingLabel").appendLine()
+            continue
+        }
         appendLine("[${entry.playlistIndex}/${playlist.total}] ${stripLinkSchemes(entry.title)}")
         buildInfoLine(entry, locale).takeIf { it.isNotEmpty() }?.let { appendLine(it) }
+        if (includeDescription && entry.description.isNotEmpty()) {
+            appendLine(capDescription(stripLinkSchemes(entry.description)))
+        }
         appendLine()
         append(transcriptBody(entry, removeSponsors, removeSelfPromo))
         appendLine().appendLine()

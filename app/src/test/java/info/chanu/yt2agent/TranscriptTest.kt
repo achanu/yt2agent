@@ -314,7 +314,7 @@ class TranscriptTest {
             entries = listOf(
                 Transcript(
                     title = "Première",
-                    description = "Ignorée dans le document",
+                    description = "Décrite ici",
                     url = "https://www.youtube.com/watch?v=one",
                     text = "[00:00] salut\n[01:30] suite",
                     channel = "Chaine",
@@ -333,20 +333,76 @@ class TranscriptTest {
             ),
         )
 
+        // Index 2 never arrived: a marker line stands in, and the description
+        // of entry 1 rides along.
         assertEquals(
             "Ma playlist\n3 videos\n\n" +
-                "[1/3] Première\nChaine — 01:30 — 12 août 2024\n\n" +
+                "[1/3] Première\nChaine — 01:30 — 12 août 2024\nDécrite ici\n\n" +
                 "[00:00] salut\n[01:30] suite\n\n" +
+                "[2/3] No transcript available for this video\n\n" +
                 "[3/3] Deuxième\n\n[00:00] texto",
-            buildPlaylistDocument(playlist, Locale.FRANCE, "%1\$d videos", false, false),
+            buildPlaylistDocument(
+                playlist,
+                Locale.FRANCE,
+                "%1\$d videos",
+                "No transcript available for this video",
+                removeSponsors = false,
+                removeSelfPromo = false,
+                includeDescription = true,
+            ),
         )
-        // Sponsor removal is applied per video; the description never appears.
+        // Sponsor removal per video, and the description checkbox respected.
         assertEquals(
             "Ma playlist\n3 videos\n\n" +
                 "[1/3] Première\nChaine — 01:30 — 12 août 2024\n\n" +
                 "[01:30] suite\n\n" +
+                "[2/3] No transcript available for this video\n\n" +
                 "[3/3] Deuxième\n\n[00:00] texto",
-            buildPlaylistDocument(playlist, Locale.FRANCE, "%1\$d videos", true, false),
+            buildPlaylistDocument(
+                playlist,
+                Locale.FRANCE,
+                "%1\$d videos",
+                "No transcript available for this video",
+                removeSponsors = true,
+                removeSelfPromo = false,
+                includeDescription = false,
+            ),
+        )
+    }
+
+    @Test
+    fun mergesRollingVttLines() {
+        val vtt = """
+            WEBVTT
+
+            00:00:01.000 --> 00:00:02.000
+            Hello
+
+            00:00:02.000 --> 00:00:03.000
+            Hello world
+
+            00:00:03.500 --> 00:00:04.000
+            Second line
+        """.trimIndent()
+
+        assertEquals(
+            "[00:02] Hello world\n[00:03] Second line",
+            parseVttOrSrt(vtt),
+        )
+    }
+
+    @Test
+    fun parsesJson3EscapesAndUnicode() {
+        val json = """
+        {"events": [
+            {"tStartMs": 0, "segs": [{"utf8": "il a dit \"bon\"\net voilà"}]},
+            {"tStartMs": 1000, "segs": [{"utf8": "l\u2019été"}]}
+        ]}
+        """.trimIndent()
+
+        assertEquals(
+            "[00:00] il a dit \"bon\" et voilà\n[00:01] l’été",
+            parseJson3(json),
         )
     }
 
@@ -442,6 +498,25 @@ class TranscriptTest {
             destinationTitle(
                 "[download] Destination: /data/cache/subs/" +
                     "Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film.fr.json3",
+            ),
+        )
+        // Titles containing dots keep their dots.
+        assertEquals(
+            "Mr. Smith Goes to Washington",
+            destinationTitle(
+                "[download] Destination: /subs/Mr. Smith Goes to Washington.en-orig.json3",
+            ),
+        )
+        assertEquals(
+            "Version 2.0 explained",
+            destinationTitle(
+                "[download] Destination: /subs/Version 2.0 explained.en.json3",
+            ),
+        )
+        assertEquals(
+            "001 - Loop Engineering explained in 8min..",
+            destinationTitle(
+                "[download] Destination: /subs/001 - Loop Engineering explained in 8min...en-orig.json3",
             ),
         )
     }
