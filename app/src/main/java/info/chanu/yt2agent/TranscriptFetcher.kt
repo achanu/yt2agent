@@ -248,6 +248,10 @@ internal fun insertChapters(transcript: String, chapters: List<Chapter>): String
 
 private val lineTimeRegex = Regex("""^\[(\d+):(\d{2})(?::(\d{2}))?]""")
 
+/**
+ * Extracts the timestamp in milliseconds from a `[MM:SS] ` or `[H:MM:SS] ` line
+ * prefix, or [Long.MAX_VALUE] when the line has none.
+ */
 internal fun lineTimeMs(line: String): Long {
     val match = lineTimeRegex.find(line) ?: return Long.MAX_VALUE
     return if (match.groupValues[3].isEmpty()) {
@@ -320,6 +324,9 @@ internal fun parseJson3(json: String): String {
     return lines.toString().trimEnd('\n')
 }
 
+/**
+ * Formats milliseconds as `[MM:SS]`, or `[H:MM:SS]` past one hour.
+ */
 internal fun formatTime(ms: Long): String {
     val totalSeconds = ms / 1000
     val h = totalSeconds / 3600

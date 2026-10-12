@@ -220,7 +220,8 @@ class TranscriptTest {
         assertEquals(
             "Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film",
             destinationTitle(
-                "[download] Destination: /data/cache/subs/Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film.fr.json3",
+                "[download] Destination: /data/cache/subs/" +
+                    "Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film.fr.json3",
             ),
         )
     }
