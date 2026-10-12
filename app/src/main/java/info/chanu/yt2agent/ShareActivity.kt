@@ -37,7 +37,7 @@ class ShareActivity : Activity() {
     private fun handleSharedText(sharedText: String?) {
         videoUrl = sharedText?.let(::findSharedUrl) ?: ""
         if (videoUrl.isEmpty()) {
-            Toast.makeText(this, R.string.no_youtube_link, Toast.LENGTH_LONG).show()
+            Toast.makeText(this, R.string.no_link, Toast.LENGTH_LONG).show()
             finish()
             return
         }

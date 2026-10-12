@@ -3,9 +3,8 @@
     <string name="fetching">Fetching transcript…</string>
     <string name="fetching_named">Fetching transcript: %1$s</string>
     <string name="share_via">Share transcript via</string>
-    <string name="no_youtube_link">No link found in the shared text</string>
+    <string name="no_link">No link found in the shared text</string>
     <string name="no_transcript">No transcript available for this video</string>
-    <string name="fetch_failed">Could not fetch transcript: %1$s</string>
     <string name="retry">Retry</string>
     <string name="cancel">Cancel</string>
     <string name="chapters_label">Chapters:</string>

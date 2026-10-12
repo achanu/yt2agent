@@ -2,9 +2,8 @@
     <string name="fetching">Obteniendo la transcripción…</string>
     <string name="fetching_named">Obteniendo la transcripción: %1$s</string>
     <string name="share_via">Compartir transcripción con</string>
-    <string name="no_youtube_link">No se encontró ningún enlace en el texto compartido</string>
+    <string name="no_link">No se encontró ningún enlace en el texto compartido</string>
     <string name="no_transcript">No hay transcripción disponible para este vídeo</string>
-    <string name="fetch_failed">No se pudo obtener la transcripción: %1$s</string>
     <string name="retry">Reintentar</string>
     <string name="cancel">Cancelar</string>
     <string name="chapters_label">Capítulos:</string>
