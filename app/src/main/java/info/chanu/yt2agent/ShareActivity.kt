@@ -47,11 +47,16 @@ class ShareActivity : Activity() {
             finish()
             return
         }
+        showFetchScreen()
+        startFetch()
+    }
+
+    /** Inflates the fetch screen and wires its checkboxes to their preferences. */
+    private fun showFetchScreen() {
         setContentView(R.layout.activity_share)
         wireCheckbox(R.id.include_description, KEY_INCLUDE_DESCRIPTION, default = true)
         wireCheckbox(R.id.remove_sponsors, KEY_REMOVE_SPONSORS, default = false)
         wireCheckbox(R.id.remove_selfpromo, KEY_REMOVE_SELF_PROMO, default = false)
-        startFetch()
     }
 
     /** Binds a checkbox to its persistent preference. */
@@ -123,7 +128,7 @@ class ShareActivity : Activity() {
         findViewById<Button>(R.id.retry).visibility =
             if (e is IllegalStateException) View.GONE else View.VISIBLE
         findViewById<Button>(R.id.retry).setOnClickListener {
-            setContentView(R.layout.activity_share)
+            showFetchScreen()
             startFetch()
         }
         findViewById<Button>(R.id.cancel).setOnClickListener { finish() }
