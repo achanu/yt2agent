@@ -92,12 +92,14 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   + `--force-download-archive` (required with `--skip-download`) in the subs dir; a
   `session.txt` marker (same playlist, < 1 h old) keeps the dir across retries — the
   fetch chain AND the Retry button continue after the failed entry instead of
-  restarting. Files past 10 MB (`MAX_PARSE_BYTES` — a multi-hour entry's word-level
-  auto-captions) are never read: one such file OOM'd the heap mid-parse (org.json
-  needs the whole string); the entry is skipped like a caption-less one, and the
-  single-video path picks a smaller track instead. `--ignore-errors` swallows entry
-  failures silently: when the info-json count is short of the reported entry count,
-  one extra pass refetches the dropped entries, and a still-partial result
+  restarting. Files past 10 MB (`MAX_PARSE_BYTES`) are never read — one such file
+  OOM'd the heap mid-parse (org.json needs the whole string): an oversized caption
+  track is skipped (the single-video path picks a smaller track instead), and an
+  oversized info json (a multi-ASR entry embeds ~25k signed caption URLs, tens of MB
+  of ballast) only thins the entry's metadata — the title falls back to the file
+  name and the entry still ships. `--ignore-errors` swallows entry failures
+  silently: when the info-json count is short of the reported entry count, one extra
+  pass refetches the dropped entries, and a still-partial result
   (`PlaylistTranscript.complete = false`) is never cached — a re-share resumes from
   the archive. Cache key prefix v7.
 - Cache hits hold the fetch screen for one second so the checkboxes are
