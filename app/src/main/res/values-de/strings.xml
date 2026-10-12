@@ -1,0 +1,16 @@
+<resources>
+    <string name="fetching">Transkript wird geladen…</string>
+    <string name="fetching_named">Transkript wird geladen: %1$s</string>
+    <string name="share_via">Transkript teilen über</string>
+    <string name="no_youtube_link">Kein Link im geteilten Text gefunden</string>
+    <string name="no_transcript">Kein Transkript für dieses Video verfügbar</string>
+    <string name="fetch_failed">Transkript konnte nicht geladen werden: %1$s</string>
+    <string name="retry">Erneut versuchen</string>
+    <string name="cancel">Abbrechen</string>
+    <string name="chapters_label">Kapitel:</string>
+    <string name="op_extracting">Link wird analysiert…</string>
+    <string name="op_webpage">Verbindung zu YouTube…</string>
+    <string name="op_player">Videodaten werden geladen…</string>
+    <string name="op_downloading">Untertitel werden geladen…</string>
+    <string name="op_writing">Dateien werden geschrieben…</string>
+</resources>

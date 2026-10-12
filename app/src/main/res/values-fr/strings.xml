@@ -1,0 +1,16 @@
+<resources>
+    <string name="fetching">Récupération du transcript…</string>
+    <string name="fetching_named">Récupération du transcript : %1$s</string>
+    <string name="share_via">Partager le transcript via</string>
+    <string name="no_youtube_link">Aucun lien trouvé dans le texte partagé</string>
+    <string name="no_transcript">Aucun transcript disponible pour cette vidéo</string>
+    <string name="fetch_failed">Impossible de récupérer le transcript : %1$s</string>
+    <string name="retry">Réessayer</string>
+    <string name="cancel">Annuler</string>
+    <string name="chapters_label">Chapitres :</string>
+    <string name="op_extracting">Analyse du lien…</string>
+    <string name="op_webpage">Contact avec YouTube…</string>
+    <string name="op_player">Récupération des données vidéo…</string>
+    <string name="op_downloading">Téléchargement des sous-titres…</string>
+    <string name="op_writing">Écriture des fichiers…</string>
+</resources>

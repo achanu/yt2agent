@@ -74,6 +74,10 @@ building.
 
 ## Notes
 
+- The interface is localized (English, French, German, Spanish); yt-dlp operation
+  lines are translated into readable steps. Descriptions are capped at 1000
+  characters, and videos with chapters get a summary at the top of the shared
+  text. Videos without any transcript are negatively cached for 24 hours.
 - First transcript fetch is slow: the library unpacks yt-dlp and Python on first use.
 - The bundled yt-dlp binary is checked for updates every 72 hours; a failed fetch forces a
   redownload and one retry. The fetch also uses

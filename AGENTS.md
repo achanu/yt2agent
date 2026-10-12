@@ -73,9 +73,15 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   `values-night/themes.xml`; no hardcoded colors in layouts.
 - Progress: yt-dlp output lines flow to the `operation` TextView via the
   `execute` callback (WARNING lines filtered); no percentage exists because
-  extraction, the slow part, has none.
+  extraction, the slow part, has none. `operationStringRes` maps known lines to
+  localized labels.
+- i18n: default strings are English; `values-fr`, `values-de`, `values-es` are full
+  translations. Keep them in sync when adding strings.
+- Shared text: chapter summary (`Chapitres :` label, localized) before the transcript;
+  descriptions capped at 1000 chars (`capDescription`).
 - Cache: `cacheDir/transcripts/<md5-of-url>.json`, 7-day TTL; read before init, write
-  after a successful fetch.
+  after a successful fetch. Negative cache: `missing-<key>.json`, 24-hour TTL, written
+  when a video has no transcript so re-shares fail instantly.
 - Error surface is a Toast + `finish()`. Toast text is filtered to the first
   `ERROR` line (`firstErrorLine`), because `YoutubeDLException` messages embed the
   whole yt-dlp stderr including harmless ffmpeg warnings.

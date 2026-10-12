@@ -12,8 +12,8 @@ android {
         applicationId = "info.chanu.yt2agent"
         minSdk = 24
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.4.0"
+        versionCode = 10
+        versionName = "0.5.0"
 
         ndk {
             // x86/x86_64 only serve emulators; splits.include does not filter the
@@ -47,6 +47,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

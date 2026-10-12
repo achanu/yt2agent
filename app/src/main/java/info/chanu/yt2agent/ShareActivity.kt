@@ -45,7 +45,8 @@ class ShareActivity : Activity() {
                     },
                     onStatus = { line ->
                         runOnUiThread {
-                            findViewById<TextView>(R.id.operation).text = line
+                            findViewById<TextView>(R.id.operation).text =
+                                operationStringRes(line)?.let { getString(it) } ?: line
                         }
                     },
                 )
@@ -74,7 +75,10 @@ class ShareActivity : Activity() {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_SUBJECT, transcript.title.ifEmpty { transcript.url })
-            putExtra(Intent.EXTRA_TEXT, buildShareText(transcript))
+            putExtra(
+                Intent.EXTRA_TEXT,
+                buildShareText(transcript, getString(R.string.chapters_label)),
+            )
         }
         val chooser = Intent.createChooser(send, getString(R.string.share_via)).apply {
             // yt2agent itself shares text/plain; do not offer it as a destination.
@@ -89,14 +93,49 @@ class ShareActivity : Activity() {
 }
 
 /**
- * Builds the shared text: title, description, video source, then the timestamped
- * transcript. All URLs are scheme-stripped (`stripLinkSchemes`): destination apps
- * that sniff links discard everything else from a text containing a real URL.
+ * Maps a yt-dlp output line to a localized short operation label, or null to show
+ * the raw line.
  */
-internal fun buildShareText(transcript: Transcript): String = buildString {
+internal fun operationStringRes(line: String): Int? = when {
+    line.contains("Extracting URL") -> R.string.op_extracting
+    line.contains("Downloading webpage") -> R.string.op_webpage
+    line.contains("player API JSON") -> R.string.op_player
+    line.startsWith("[download] Destination:") -> R.string.op_downloading
+    line.contains("Writing video subtitles") || line.contains("Writing video metadata") ->
+        R.string.op_writing
+    else -> null
+}
+
+private const val DESCRIPTION_MAX_CHARS = 1000
+
+/**
+ * Caps the description: some are huge walls of links and hashtags and would bloat
+ * the shared text.
+ */
+internal fun capDescription(description: String): String =
+    if (description.length <= DESCRIPTION_MAX_CHARS) {
+        description
+    } else {
+        description.take(DESCRIPTION_MAX_CHARS - 1).trimEnd() + "…"
+    }
+
+/**
+ * Builds the shared text: title, capped description, video source, chapter summary,
+ * then the timestamped transcript. All URLs are scheme-stripped (`stripLinkSchemes`):
+ * destination apps that sniff links discard everything else from a text containing
+ * a real URL.
+ */
+internal fun buildShareText(transcript: Transcript, chaptersLabel: String): String = buildString {
     if (transcript.title.isNotEmpty()) appendLine(stripLinkSchemes(transcript.title)).appendLine()
-    if (transcript.description.isNotEmpty()) appendLine(stripLinkSchemes(transcript.description)).appendLine()
+    if (transcript.description.isNotEmpty()) {
+        appendLine(capDescription(stripLinkSchemes(transcript.description))).appendLine()
+    }
     appendLine("Source: ${shortUrl(transcript.url)}").appendLine()
+    if (transcript.chapters.isNotEmpty()) {
+        appendLine(chaptersLabel)
+        transcript.chapters.forEach { appendLine("[${formatTime(it.timeMs)}] ${it.title}") }
+        appendLine()
+    }
     append(transcript.text)
 }
 

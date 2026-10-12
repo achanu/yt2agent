@@ -8,4 +8,10 @@
     <string name="fetch_failed">Could not fetch transcript: %1$s</string>
     <string name="retry">Retry</string>
     <string name="cancel">Cancel</string>
+    <string name="chapters_label">Chapters:</string>
+    <string name="op_extracting">Parsing the link…</string>
+    <string name="op_webpage">Contacting YouTube…</string>
+    <string name="op_player">Retrieving video data…</string>
+    <string name="op_downloading">Downloading subtitles…</string>
+    <string name="op_writing">Writing files…</string>
 </resources>

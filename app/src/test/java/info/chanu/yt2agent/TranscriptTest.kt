@@ -37,7 +37,7 @@ class TranscriptTest {
     }
 
     @Test
-    fun insertsChapterMarkersAtTheirTimestamps() {
+    fun parsesChaptersAndInsertsMarkersAtTheirTimestamps() {
         val transcript = "[00:00] intro\n[01:00] milieu\n[02:00] fin"
         val info = JSONObject(
             """{"chapters": [
@@ -45,24 +45,21 @@ class TranscriptTest {
                 {"start_time": 90, "title": "Après"}
             ]}""",
         )
+        val chapters = parseChapters(info)
 
+        assertEquals(listOf(Chapter(0, "Début"), Chapter(90_000, "Après")), chapters)
         assertEquals(
             "[00:00] [Chapitre] Début\n[00:00] intro\n[01:00] milieu\n" +
                 "[01:30] [Chapitre] Après\n[02:00] fin",
-            insertChapters(transcript, info),
+            insertChapters(transcript, chapters),
         )
     }
 
     @Test
     fun insertChaptersLeavesTranscriptAloneWhenNone() {
-        assertEquals(
-            "[00:00] seul",
-            insertChapters("[00:00] seul", JSONObject("""{"chapters": []}""")),
-        )
-        assertEquals(
-            "[00:00] seul",
-            insertChapters("[00:00] seul", JSONObject("{}")),
-        )
+        assertEquals(emptyList<Chapter>(), parseChapters(JSONObject("""{"chapters": []}""")))
+        assertEquals(emptyList<Chapter>(), parseChapters(JSONObject("{}")))
+        assertEquals("[00:00] seul", insertChapters("[00:00] seul", emptyList()))
     }
 
     @Test
@@ -114,7 +111,7 @@ class TranscriptTest {
         assertEquals(
             "Le fantôme MK\n\nUne vidéo sur les robots humanoïdes.\n\n" +
                 "Source: youtu.be/dQw4w9WgXcQ\n\n[00:00] bonjour",
-            buildShareText(transcript),
+            buildShareText(transcript, "Chapitres :"),
         )
     }
 
@@ -129,8 +126,34 @@ class TranscriptTest {
 
         assertEquals(
             "Source: youtu.be/dQw4w9WgXcQ\n\n[00:00] bonjour",
-            buildShareText(transcript),
+            buildShareText(transcript, "Chapitres :"),
         )
+    }
+
+    @Test
+    fun buildsShareTextWithChapterSummary() {
+        val transcript = Transcript(
+            title = "Titre",
+            description = "Desc",
+            url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            text = "[00:00] texte",
+            chapters = listOf(Chapter(0, "Intro"), Chapter(83_000, "Suite")),
+        )
+
+        assertEquals(
+            "Titre\n\nDesc\n\nSource: youtu.be/dQw4w9WgXcQ\n\n" +
+                "Chapitres :\n[00:00] Intro\n[01:23] Suite\n\n[00:00] texte",
+            buildShareText(transcript, "Chapitres :"),
+        )
+    }
+
+    @Test
+    fun capsLongDescriptions() {
+        val short = "a".repeat(1000)
+        assertEquals(short, capDescription(short))
+        val long = "b".repeat(2500)
+        assertEquals(1000, capDescription(long).length)
+        assertEquals("…", capDescription(long).takeLast(1))
     }
 
     @Test
@@ -157,7 +180,7 @@ class TranscriptTest {
         assertEquals(
             "Regarde twitter.com/x\n\nPlus d'infos sur exemple.fr/page et site.com/a\n\n" +
                 "Source: youtu.be/dQw4w9WgXcQ\n\n[00:00] bonjour",
-            buildShareText(transcript),
+            buildShareText(transcript, "Chapitres :"),
         )
     }
 
