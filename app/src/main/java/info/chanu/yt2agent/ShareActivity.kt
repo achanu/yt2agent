@@ -1,6 +1,7 @@
 package info.chanu.yt2agent
 
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -70,7 +71,14 @@ class ShareActivity : Activity() {
             putExtra(Intent.EXTRA_SUBJECT, transcript.title.ifEmpty { transcript.url })
             putExtra(Intent.EXTRA_TEXT, buildShareText(transcript))
         }
-        startActivity(Intent.createChooser(send, getString(R.string.share_via)))
+        val chooser = Intent.createChooser(send, getString(R.string.share_via)).apply {
+            // yt2agent itself shares text/plain; do not offer it as a destination.
+            putExtra(
+                Intent.EXTRA_EXCLUDE_COMPONENTS,
+                arrayOf(ComponentName(this@ShareActivity, ShareActivity::class.java)),
+            )
+        }
+        startActivity(chooser)
         finish()
     }
 }
