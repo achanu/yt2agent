@@ -68,6 +68,11 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   whatever the language — YouTube's machine translations degrade the text), then the
   locale, then English. `-orig` tracks stay genuine even when creators mislabel the
   video language; `pickSubtitle` logs the available files and the one it picks.
+- Caption formats: json3 preferred, then vtt/srt (`--sub-format "json3/vtt/srt"`);
+  `parseVttOrSrt` handles both (shared cue-block shape). Non-YouTube sites without
+  json3 work through vtt/srt.
+- `--no-playlist`: one video per share; URLs with a list= parameter fetch only the
+  video, and playlist URLs fail with an explicit error.
 - Fetch failures show `activity_error` (message + Retry button) instead of a toast.
 - Day/night: `AppTheme` has a light parent in `values/themes.xml` and a dark one in
   `values-night/themes.xml`; no hardcoded colors in layouts.
@@ -104,7 +109,5 @@ If dependency resolution hangs (dead sockets to dl.google.com), re-run with
 
 - Subtitle language: device locale then English, no picker (`ponytail:` in
   TranscriptFetcher).
-- json3 captions only: sites whose extractors do not expose json3 report
-  "no transcript" (`ponytail:` in TranscriptFetcher).
 - Bot detection: if YouTube blocks the default yt-dlp client, update the bundled
   yt-dlp via `updateYoutubeDL`.

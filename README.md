@@ -23,7 +23,9 @@ YouTube app → Share → yt2agent → transcript → app of your choice.
   video again is instant and works offline. On failure, an error screen with a
   retry button replaces the old ephemeral toast.
 - Any URL accepted by yt-dlp works (YouTube, Vimeo, PeerTube, ...); the first
-  URL found in the shared text is used.
+  URL found in the shared text is used. One video per share (`--no-playlist`).
+- Captions are fetched as json3 when the site offers it, falling back to vtt/srt
+  for other sites.
 - The json3 captions are flattened to timestamped plain text: one `[MM:SS]` line
   per caption, with `[Chapitre]` markers inserted when the video has chapters.
 - The title is shown in the progress UI while the transcript downloads.

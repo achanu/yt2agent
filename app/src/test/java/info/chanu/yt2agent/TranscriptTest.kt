@@ -227,6 +227,45 @@ class TranscriptTest {
     }
 
     @Test
+    fun parsesWebVttCues() {
+        val vtt = """
+            WEBVTT
+
+            NOTE cue settings follow the timing line
+
+            00:00:01.000 --> 00:00:04.000 align:start
+            Première ligne
+            deuxième partie
+
+            01:02:03.500 --> 01:02:05.000
+            <c>Tagué</c> texte
+        """.trimIndent()
+
+        assertEquals(
+            "[00:01] Première ligne deuxième partie\n[01:02:03] Tagué texte",
+            parseVttOrSrt(vtt),
+        )
+    }
+
+    @Test
+    fun parsesSrtCues() {
+        val srt = """
+            1
+            00:00:01,000 --> 00:00:04,000
+            Sous-titre un
+
+            2
+            00:01:02,500 --> 00:01:05,000
+            Sous-titre deux
+        """.trimIndent()
+
+        assertEquals(
+            "[00:01] Sous-titre un\n[01:02] Sous-titre deux",
+            parseVttOrSrt(srt),
+        )
+    }
+
+    @Test
     fun fallsBackToEnglishThenFirstFile() {
         assertEquals("sub.en.json3", pickSubtitle(listOf("sub.de.json3", "sub.en.json3"), "fr"))
         assertEquals("sub.de.json3", pickSubtitle(listOf("sub.de.json3", "sub.ja.json3"), "fr"))

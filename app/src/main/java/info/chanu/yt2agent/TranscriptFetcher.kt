@@ -96,9 +96,13 @@ class TranscriptFetcher(private val context: Context) {
             // Original language first: YouTube's auto-translations degrade the text
             // and agents read any language; device locale and English follow.
             addOption("--sub-langs", ".*-orig,${Locale.getDefault().language},en")
-            // ponytail: json3 only; sites without json3 subtitles report "no transcript"
-            addOption("--sub-format", "json3")
+            // Format preference: json3 (YouTube's native), then vtt/srt for sites
+            // whose extractors do not expose json3.
+            addOption("--sub-format", "json3/vtt/srt")
             addOption("-o", File(outDir, "%(title)s.%(ext)s").absolutePath)
+            // One video per share; a URL carrying a list= parameter fetches only
+            // the video, and playlist URLs fail with an explicit error.
+            addOption("--no-playlist")
             // YouTube 429s timedtext requests from impersonation-less clients.
             addOption("--ignore-errors")
             addOption("--retries", "5")
@@ -123,16 +127,22 @@ class TranscriptFetcher(private val context: Context) {
         val chapters = parseChapters(info)
 
         // yt-dlp writes every requested language that exists; pick deterministically.
-        val subFiles = outDir.listFiles()?.filter { it.extension == "json3" }.orEmpty()
+        val subFiles = outDir.listFiles()?.filter { it.extension in SUBTITLE_EXTENSIONS }.orEmpty()
         val subName = pickSubtitle(subFiles.map { it.name }, Locale.getDefault().language)
             ?: error(context.getString(R.string.no_transcript))
         Log.i("yt2agent", "subs available: ${subFiles.map { it.name }}, picked: $subName")
+
+        val subFile = File(outDir, subName)
+        val captionText = when (subFile.extension) {
+            "vtt", "srt" -> parseVttOrSrt(subFile.readText())
+            else -> parseJson3(subFile.readText())
+        }
 
         return Transcript(
             title = info.optString("title"),
             description = info.optString("description"),
             url = info.optString("webpage_url").ifEmpty { videoUrl },
-            text = insertChapters(parseJson3(File(outDir, subName).readText()), chapters),
+            text = insertChapters(captionText, chapters),
             chapters = chapters,
         )
     }
@@ -211,6 +221,7 @@ class TranscriptFetcher(private val context: Context) {
     }
 
     private companion object {
+        val SUBTITLE_EXTENSIONS = setOf("json3", "vtt", "srt")
         const val UPDATE_TTL_MILLIS = 72L * 60 * 60 * 1000
         const val TRANSCRIPT_TTL_MILLIS = 7L * 24 * 60 * 60 * 1000
         const val MISSING_TTL_MILLIS = 24L * 60 * 60 * 1000
@@ -290,6 +301,33 @@ internal fun pickSubtitle(names: List<String>, locale: String): String? {
     }
     return names.first()
 }
+
+private val cueTimeRegex = Regex("""(?:(\d{1,2}):)?(\d{2}):(\d{2})[.,]\d{1,3}""")
+
+/**
+ * Parses WebVTT or SRT captions — both share the cue-block shape: a timing line
+ * followed by the caption text — into timestamped plain text. Cue tags are
+ * stripped.
+ * ponytail: no de-duplication of rolling auto-caption lines; YouTube always
+ * serves json3 (handled by [parseJson3]) and other sites rarely roll VTT.
+ */
+internal fun parseVttOrSrt(text: String): String =
+    text.split(Regex("""\n\s*\n"""))
+        .mapNotNull { block ->
+            val lines = block.lines()
+            val timingIndex = lines.indexOfFirst { cueTimeRegex.containsMatchIn(it) }
+            if (timingIndex < 0) return@mapNotNull null
+            val match = cueTimeRegex.find(lines[timingIndex])!!
+            val startMs = match.groupValues[1].ifEmpty { "0" }.toLong() * 3_600_000 +
+                match.groupValues[2].toLong() * 60_000 +
+                match.groupValues[3].toLong() * 1_000
+            val caption = lines.drop(timingIndex + 1)
+                .joinToString(" ") { it.trim() }
+                .replace(Regex("""<[^>]*>"""), "")
+                .trim()
+            if (caption.isEmpty()) null else "[${formatTime(startMs)}] $caption"
+        }
+        .joinToString("\n")
 
 /**
  * Flattens yt-dlp json3 captions to timestamped plain text, one `[MM:SS]` line per
