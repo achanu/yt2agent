@@ -59,8 +59,11 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   `--write-info-json` + `--write-subs` invocation. Do not reintroduce a second
   extraction pass (it doubles YouTube API pressure and 429 risk).
 - Fetch options are load-bearing against YouTube 429s: `--ignore-errors`,
-  `--retries/--retry-sleep`, and `--extractor-args youtube:player_client=android_vr`
-  (the library cannot impersonate a browser, so the default client gets blocked).
+  `--retries/--retry-sleep`. No `player_client` override: android_vr was killed by
+  YouTube on 2026-08-17 (yt-dlp dropped it from defaults in 2026.08.19); without a JS
+  runtime the defaults extract through visionos, and the 72 h binary update keeps the
+  client set current. A fresh install on a stale bundled binary self-heals: the failed
+  fetch chain forces an update and attempt 3 runs with the new defaults.
 - `updateYoutubeDL(STABLE)` runs at most every 72 hours, AFTER the fetch chain in the
   fetch thread (it never races an execution and the chooser is already up); a failed
   fetch (except "no transcript") forces a redownload and one retry — skipped when the
@@ -84,7 +87,11 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   (`PLAYLIST_MAX`), output template `%(playlist_index)03d - %(title)s` so each video's
   info json and captions group by index prefix. Entries without captions are skipped,
   not fatal. The document is a playlist header plus `[i/N]` blocks (title, info line,
-  transcript); per-video descriptions and sources stay out. Cache key prefix v7.
+  transcript); per-video descriptions and sources stay out. Resume: `--download-archive`
+  + `--force-download-archive` (required with `--skip-download`) in the subs dir; a
+  `session.txt` marker (same playlist, < 1 h old) keeps the dir across retries — the
+  fetch chain AND the Retry button continue after the failed entry instead of
+  restarting. Cache key prefix v7.
 - Cache hits hold the fetch screen for one second so the checkboxes are
   reachable (`MIN_FETCH_DISPLAY_MILLIS`).
 - Fetch failures show `activity_error` (message + Copy details + Retry + Cancel);

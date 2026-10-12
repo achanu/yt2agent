@@ -226,14 +226,27 @@ class TranscriptFetcher(private val context: Context) {
         onTitle: (String) -> Unit,
         onStatus: (String) -> Unit,
     ): PlaylistTranscript {
-        val outDir = File(context.cacheDir, "subs").apply {
-            mkdirs()
-            listFiles()?.forEach { it.delete() }
+        val outDir = File(context.cacheDir, "subs").apply { mkdirs() }
+        // A retry (from the fetch chain or the Retry button) resumes after the
+        // failed entry instead of restarting: the download archive lets yt-dlp
+        // skip the entries it already wrote, so the dir is kept while it holds
+        // a recent attempt on the same playlist.
+        val session = File(outDir, SESSION_FILE)
+        val resumable = session.exists() &&
+            runCatching { session.readText() }.getOrNull() == playlistUrl &&
+            System.currentTimeMillis() - session.lastModified() < TRANSCRIPT_TTL_MILLIS
+        if (!resumable) {
+            outDir.listFiles()?.forEach { it.delete() }
+            session.writeText(playlistUrl)
         }
 
         val request = baseRequest(playlistUrl).apply {
             addOption("-o", File(outDir, "%(playlist_index)03d - %(title)s.%(ext)s").absolutePath)
             addOption("--playlist-items", "1-$PLAYLIST_MAX")
+            addOption("--download-archive", File(outDir, "archive.txt").absolutePath)
+            // --skip-download is a simulation option: without this the archive
+            // would never be written.
+            addOption("--force-download-archive")
         }
 
         synchronized(ytLock) {
@@ -317,7 +330,10 @@ class TranscriptFetcher(private val context: Context) {
         // SponsorBlock promotional segments; only the requested categories
         // land in sponsorblock_chapters (verified: the mark list filters).
         addOption("--sponsorblock-mark", "sponsor,selfpromo,interaction")
-        addOption("--extractor-args", "youtube:player_client=android_vr")
+        // No player_client override: android_vr was killed by YouTube on 2026-08-17
+        // (yt-dlp dropped it from defaults in 2026.08.19). Without a JS runtime the
+        // current defaults extract through visionos; a fresh install on a stale
+        // bundled binary self-heals via the forced update in the retry chain.
     }
 
     // ponytail: 1-hour TTL; the cache is a short-term de-dup, not a store.
@@ -494,6 +510,7 @@ class TranscriptFetcher(private val context: Context) {
 
     private companion object {
         val SUBTITLE_EXTENSIONS = setOf("json3", "vtt", "srt")
+        const val SESSION_FILE = "session.txt"
         const val PLAYLIST_MAX = 30
         const val UPDATE_TTL_MILLIS = 72L * 60 * 60 * 1000
         const val RECENT_UPDATE_MILLIS = 12L * 60 * 60 * 1000
