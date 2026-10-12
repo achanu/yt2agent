@@ -112,7 +112,7 @@ class TranscriptTest {
         assertEquals(
             "Le fantôme MK\n\nUne vidéo sur les robots humanoïdes.\n\n" +
                 "Source: youtu.be/dQw4w9WgXcQ\n\n[00:00] bonjour",
-            buildShareText(transcript, "Chapitres :", Locale.FRANCE, false, false),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, false, false),
         )
     }
 
@@ -127,7 +127,7 @@ class TranscriptTest {
 
         assertEquals(
             "Source: youtu.be/dQw4w9WgXcQ\n\n[00:00] bonjour",
-            buildShareText(transcript, "Chapitres :", Locale.FRANCE, false, false),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, false, false),
         )
     }
 
@@ -144,7 +144,7 @@ class TranscriptTest {
         assertEquals(
             "Titre\n\nDesc\n\nSource: youtu.be/dQw4w9WgXcQ\n\n" +
                 "Chapitres :\n[00:00] Intro\n[01:23] Suite\n\n[00:00] texte",
-            buildShareText(transcript, "Chapitres :", Locale.FRANCE, false, false),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, false, false),
         )
     }
 
@@ -220,11 +220,30 @@ class TranscriptTest {
 
         assertEquals(
             "T\n\nSource: youtu.be/7q8Gu4amvl4\n\n[00:00] sponsor line\n[01:30] kept line",
-            buildShareText(transcript, "Chapitres :", Locale.FRANCE, false, false),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, false, false),
         )
         assertEquals(
             "T\n\nSource: youtu.be/7q8Gu4amvl4\n\n[01:30] kept line",
-            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, false),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, true, false),
+        )
+    }
+
+    @Test
+    fun buildShareTextCanOmitTheDescription() {
+        val transcript = Transcript(
+            title = "T",
+            description = "Une description",
+            url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            text = "[00:00] texte",
+        )
+
+        assertEquals(
+            "T\n\nUne description\n\nSource: youtu.be/dQw4w9WgXcQ\n\n[00:00] texte",
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, false, false),
+        )
+        assertEquals(
+            "T\n\nSource: youtu.be/dQw4w9WgXcQ\n\n[00:00] texte",
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE, false, false, false),
         )
     }
 
@@ -246,18 +265,18 @@ class TranscriptTest {
         assertEquals(
             "T\n\nSource: youtu.be/7q8Gu4amvl4\n\n" +
                 "[01:00] self promo\n[02:00] subscribe\n[03:00] content",
-            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, false),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, true, false),
         )
         // Self-promo seule : le segment sponsor reste.
         assertEquals(
             "T\n\nSource: youtu.be/7q8Gu4amvl4\n\n" +
                 "[00:00] sponsor\n[03:00] content",
-            buildShareText(transcript, "Chapitres :", Locale.FRANCE, false, true),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, false, true),
         )
         // Les deux.
         assertEquals(
             "T\n\nSource: youtu.be/7q8Gu4amvl4\n\n[03:00] content",
-            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, true),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, true, true),
         )
     }
 
@@ -294,7 +313,7 @@ class TranscriptTest {
         assertEquals(
             "Regarde twitter.com/x\n\nPlus d'infos sur exemple.fr/page et site.com/a\n\n" +
                 "Source: youtu.be/dQw4w9WgXcQ\n\n[00:00] bonjour",
-            buildShareText(transcript, "Chapitres :", Locale.FRANCE, false, false),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, false, false),
         )
     }
 

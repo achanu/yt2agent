@@ -48,13 +48,14 @@ class ShareActivity : Activity() {
             return
         }
         setContentView(R.layout.activity_share)
-        wireRemovalCheckbox(R.id.remove_sponsors, KEY_REMOVE_SPONSORS)
-        wireRemovalCheckbox(R.id.remove_selfpromo, KEY_REMOVE_SELF_PROMO)
+        wireCheckbox(R.id.include_description, KEY_INCLUDE_DESCRIPTION)
+        wireCheckbox(R.id.remove_sponsors, KEY_REMOVE_SPONSORS)
+        wireCheckbox(R.id.remove_selfpromo, KEY_REMOVE_SELF_PROMO)
         startFetch()
     }
 
     /** Binds a checkbox to its persistent preference. */
-    private fun wireRemovalCheckbox(id: Int, key: String) {
+    private fun wireCheckbox(id: Int, key: String) {
         val checkbox = findViewById<CheckBox>(id)
         checkbox.isChecked = prefs.getBoolean(key, false)
         checkbox.setOnCheckedChangeListener { _, checked ->
@@ -138,6 +139,7 @@ class ShareActivity : Activity() {
                     transcript,
                     getString(R.string.chapters_label),
                     Locale.getDefault(),
+                    prefs.getBoolean(KEY_INCLUDE_DESCRIPTION, true),
                     prefs.getBoolean(KEY_REMOVE_SPONSORS, false),
                     prefs.getBoolean(KEY_REMOVE_SELF_PROMO, false),
                 ),
@@ -170,6 +172,7 @@ internal fun operationStringRes(line: String): Int? = when {
 }
 
 private const val DESCRIPTION_MAX_CHARS = 1000
+private const val KEY_INCLUDE_DESCRIPTION = "include_description"
 private const val KEY_REMOVE_SPONSORS = "remove_sponsors"
 private const val KEY_REMOVE_SELF_PROMO = "remove_selfpromo"
 
@@ -207,13 +210,14 @@ internal fun buildShareText(
     transcript: Transcript,
     chaptersLabel: String,
     locale: Locale,
+    includeDescription: Boolean,
     removeSponsors: Boolean,
     removeSelfPromo: Boolean,
 ): String = buildString {
     if (transcript.title.isNotEmpty()) appendLine(stripLinkSchemes(transcript.title)).appendLine()
     val infoLine = buildInfoLine(transcript, locale)
     if (infoLine.isNotEmpty()) appendLine(infoLine).appendLine()
-    if (transcript.description.isNotEmpty()) {
+    if (includeDescription && transcript.description.isNotEmpty()) {
         appendLine(capDescription(stripLinkSchemes(transcript.description))).appendLine()
     }
     appendLine("Source: ${shortUrl(transcript.url)}").appendLine()
