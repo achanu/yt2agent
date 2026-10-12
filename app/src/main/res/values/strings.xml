@@ -18,4 +18,5 @@
     <string name="include_description">Include the description</string>
     <string name="copy_details">Copy details</string>
     <string name="copied">Copied</string>
+    <string name="share_as_file">Share as file</string>
 </resources>

@@ -94,6 +94,10 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 - Shared text: title, metadata line (`buildInfoLine`: channel, duration,
   upload date), capped description, source, chapter summary, transcript.
   Descriptions capped at 1000 chars (`capDescription`).
+- "Share as file" (4th checkbox, unchecked by default): the same text goes out as
+  a .txt attachment (EXTRA_STREAM) via androidx FileProvider (`shared/` cache dir,
+  one file kept, name from `sanitizeFilename`). The playlist rule (checked+greyed)
+  is reserved for future multi-transcript support.
 - Error path order: plain retry first (transient DNS/429 errors resolve alone),
   forced binary update + retry only on a second failure — the update download
   is paid only when the binary is the plausible suspect.

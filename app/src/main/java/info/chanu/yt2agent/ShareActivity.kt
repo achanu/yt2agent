@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
@@ -13,6 +14,8 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.FileProvider
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -59,6 +62,7 @@ class ShareActivity : Activity() {
         wireCheckbox(R.id.include_description, KEY_INCLUDE_DESCRIPTION, default = true)
         wireCheckbox(R.id.remove_sponsors, KEY_REMOVE_SPONSORS, default = false)
         wireCheckbox(R.id.remove_selfpromo, KEY_REMOVE_SELF_PROMO, default = false)
+        wireCheckbox(R.id.share_as_file, KEY_SHARE_AS_FILE, default = false)
     }
 
     /** Binds a checkbox to its persistent preference. */
@@ -130,6 +134,17 @@ class ShareActivity : Activity() {
         }.start()
     }
 
+    /** Writes the share text to a cache file and exposes it via the FileProvider. */
+    private fun fileUri(title: String, text: String): Uri {
+        val dir = File(cacheDir, "shared").apply {
+            mkdirs()
+            listFiles()?.forEach { it.delete() }
+        }
+        val file = File(dir, sanitizeFilename(title) + ".txt")
+        file.writeText(text)
+        return FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+    }
+
     private fun showError(e: Exception) {
         setContentView(R.layout.activity_error)
         findViewById<TextView>(R.id.error_message).text = firstErrorLine(e)
@@ -151,20 +166,25 @@ class ShareActivity : Activity() {
     }
 
     private fun shareTranscript(transcript: Transcript) {
+        val text = buildShareText(
+            transcript,
+            getString(R.string.chapters_label),
+            Locale.getDefault(),
+            prefs.getBoolean(KEY_INCLUDE_DESCRIPTION, true),
+            prefs.getBoolean(KEY_REMOVE_SPONSORS, false),
+            prefs.getBoolean(KEY_REMOVE_SELF_PROMO, false),
+        )
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_SUBJECT, transcript.title.ifEmpty { transcript.url })
-            putExtra(
-                Intent.EXTRA_TEXT,
-                buildShareText(
-                    transcript,
-                    getString(R.string.chapters_label),
-                    Locale.getDefault(),
-                    prefs.getBoolean(KEY_INCLUDE_DESCRIPTION, true),
-                    prefs.getBoolean(KEY_REMOVE_SPONSORS, false),
-                    prefs.getBoolean(KEY_REMOVE_SELF_PROMO, false),
-                ),
-            )
+            if (prefs.getBoolean(KEY_SHARE_AS_FILE, false)) {
+                // Long texts choke some destination apps; the file carries the
+                // same content as an attachment.
+                putExtra(Intent.EXTRA_STREAM, fileUri(transcript.title, text))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } else {
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
         }
         val chooser = Intent.createChooser(send, getString(R.string.share_via)).apply {
             // yt2agent itself shares text/plain; do not offer it as a destination.
@@ -194,6 +214,7 @@ internal fun operationStringRes(line: String): Int? = when {
 
 private const val DESCRIPTION_MAX_CHARS = 1000
 private const val KEY_INCLUDE_DESCRIPTION = "include_description"
+private const val KEY_SHARE_AS_FILE = "share_as_file"
 private const val MIN_FETCH_DISPLAY_MILLIS = 1000L
 private const val KEY_REMOVE_SPONSORS = "remove_sponsors"
 private const val KEY_REMOVE_SELF_PROMO = "remove_selfpromo"
@@ -279,6 +300,10 @@ internal fun stripLinkSchemes(text: String): String =
  */
 private fun firstErrorLine(e: Exception): String =
     e.message?.lineSequence()?.firstOrNull { "ERROR" in it } ?: e.message ?: e.toString()
+
+/** Builds a safe file name from a video title. */
+internal fun sanitizeFilename(title: String): String =
+    title.replace(Regex("""[\\/:*?"<>|]"""), "_").trim().take(100).ifEmpty { "transcript" }
 
 /**
  * Extracts the first URL from shared text, or null if it contains none. Any URL

@@ -17,4 +17,5 @@
     <string name="include_description">Beschreibung einbeziehen</string>
     <string name="copy_details">Details kopieren</string>
     <string name="copied">Kopiert</string>
+    <string name="share_as_file">Als Datei teilen</string>
 </resources>

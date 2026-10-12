@@ -12,8 +12,8 @@ android {
         applicationId = "info.chanu.yt2agent"
         minSdk = 24
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.8.0"
+        versionCode = 14
+        versionName = "0.9.0"
 
         ndk {
             // x86/x86_64 only serve emulators; splits.include does not filter the
@@ -71,6 +71,8 @@ android {
 
 dependencies {
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    // FileProvider: sharing a file requires a content:// URI since API 24.
+    implementation("androidx.core:core:1.16.0")
 
     testImplementation("junit:junit:4.13.2")
     // org.json stub for local unit tests (Android provides it at runtime)

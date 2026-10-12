@@ -281,6 +281,14 @@ class TranscriptTest {
     }
 
     @Test
+    fun sanitizesFilenames() {
+        assertEquals("Un titre normal", sanitizeFilename("Un titre normal"))
+        assertEquals("a_b_c", sanitizeFilename("a/b\\c"))
+        assertEquals("transcript", sanitizeFilename("   "))
+        assertEquals(100, sanitizeFilename("x".repeat(150)).length)
+    }
+
+    @Test
     fun capsLongDescriptions() {
         val short = "a".repeat(1000)
         assertEquals(short, capDescription(short))
