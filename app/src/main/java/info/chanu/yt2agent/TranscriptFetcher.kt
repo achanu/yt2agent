@@ -63,8 +63,9 @@ class TranscriptFetcher(private val context: Context) {
 
     /**
      * One yt-dlp pass writes both the metadata (`--write-info-json`) and the json3
-     * captions. yt-dlp writes the info file right after extraction, before the
-     * subtitles, so a poller surfaces the title while the download continues.
+     * captions. The output template embeds the title, so the first
+     * `[download] Destination:` line surfaces the title before the subtitles are
+     * downloaded; yt-dlp only writes the info file at the very end of the run.
      */
     private fun fetchTranscript(
         videoUrl: String,
@@ -86,7 +87,7 @@ class TranscriptFetcher(private val context: Context) {
             addOption("--sub-langs", ".*-orig,${Locale.getDefault().language},en")
             // ponytail: json3 only; sites without json3 subtitles report "no transcript"
             addOption("--sub-format", "json3")
-            addOption("-o", File(outDir, "sub").absolutePath)
+            addOption("-o", File(outDir, "%(title)s.%(ext)s").absolutePath)
             // YouTube 429s timedtext requests from impersonation-less clients.
             addOption("--ignore-errors")
             addOption("--retries", "5")
@@ -94,28 +95,20 @@ class TranscriptFetcher(private val context: Context) {
             addOption("--extractor-args", "youtube:player_client=android_vr")
         }
 
-        val infoFile = File(outDir, "sub.info.json")
-        val titleThread = Thread {
-            for (i in 0 until 300) {
-                if (infoFile.exists()) {
-                    try {
-                        onTitle(JSONObject(infoFile.readText()).optString("title"))
-                        return@Thread
-                    } catch (e: Exception) {
-                        // File still being written; retry on the next tick.
-                    }
+        var titleSurfaced = false
+        YoutubeDL.getInstance().execute(request, null) { _, _, line ->
+            val text = line?.trim().orEmpty()
+            if (text.isNotEmpty() && !text.startsWith("WARNING")) {
+                if (!titleSurfaced && text.startsWith(DESTINATION_PREFIX)) {
+                    titleSurfaced = true
+                    onTitle(destinationTitle(text))
                 }
-                Thread.sleep(200)
+                onStatus(text)
             }
         }
-        titleThread.start()
 
-        YoutubeDL.getInstance().execute(request, null) { _, _, line ->
-            if (!line.isNullOrBlank() && !line.startsWith("WARNING")) onStatus(line.trim())
-        }
-        titleThread.join()
-
-        val info = if (infoFile.exists()) JSONObject(infoFile.readText()) else JSONObject()
+        val infoFile = outDir.listFiles()?.firstOrNull { it.name.endsWith(".info.json") }
+        val info = if (infoFile != null) JSONObject(infoFile.readText()) else JSONObject()
 
         // yt-dlp writes every requested language that exists; pick deterministically.
         val subFiles = outDir.listFiles()?.filter { it.extension == "json3" }.orEmpty()
@@ -224,6 +217,19 @@ internal fun lineTimeMs(line: String): Long {
             match.groupValues[3].toLong()) * 1000
     }
 }
+
+private const val DESTINATION_PREFIX = "[download] Destination: "
+
+/**
+ * Extracts a display title from a `[download] Destination: <file>` yt-dlp line.
+ * ponytail: a title containing dots is cut at the second-to-last dot; the exact
+ * title still reaches the shared text via the info file.
+ */
+internal fun destinationTitle(line: String): String =
+    line.removePrefix(DESTINATION_PREFIX)
+        .substringAfterLast('/')
+        .substringBeforeLast(".")
+        .substringBeforeLast(".")
 
 /**
  * Picks the subtitle file by preference: device locale, original-language track

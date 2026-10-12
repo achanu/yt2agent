@@ -183,6 +183,16 @@ class TranscriptTest {
     }
 
     @Test
+    fun extractsDisplayTitleFromDestinationLine() {
+        assertEquals(
+            "Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film",
+            destinationTitle(
+                "[download] Destination: /data/cache/subs/Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film.fr.json3",
+            ),
+        )
+    }
+
+    @Test
     fun fallsBackToEnglishThenFirstFile() {
         assertEquals("sub.en.json3", pickSubtitle(listOf("sub.de.json3", "sub.en.json3"), "fr"))
         assertEquals("sub.de.json3", pickSubtitle(listOf("sub.de.json3", "sub.ja.json3"), "fr"))
