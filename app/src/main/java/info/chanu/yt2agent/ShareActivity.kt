@@ -17,6 +17,7 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 /**
@@ -154,12 +155,15 @@ class ShareActivity : Activity() {
     }
 
     /** Writes the share text to a cache file and exposes it via the FileProvider. */
-    private fun fileUri(title: String, text: String): Uri {
+    private fun fileUri(text: String): Uri {
         val dir = File(cacheDir, "shared").apply {
             mkdirs()
             listFiles()?.forEach { it.delete() }
         }
-        val file = File(dir, sanitizeFilename(title) + ".txt")
+        // Sortable and unique within a minute; the video or playlist title stays
+        // in the share subject.
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
+        val file = File(dir, "${stamp}_yt2agent.txt")
         file.writeText(text)
         return FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
     }
@@ -219,7 +223,7 @@ class ShareActivity : Activity() {
             if (asFile) {
                 // Long texts choke some destination apps; the file carries the
                 // same content as an attachment.
-                putExtra(Intent.EXTRA_STREAM, fileUri(title, text))
+                putExtra(Intent.EXTRA_STREAM, fileUri(text))
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             } else {
                 putExtra(Intent.EXTRA_TEXT, text)
@@ -369,10 +373,6 @@ internal fun stripLinkSchemes(text: String): String =
  */
 private fun firstErrorLine(e: Exception): String =
     e.message?.lineSequence()?.firstOrNull { "ERROR" in it } ?: e.message ?: e.toString()
-
-/** Builds a safe file name from a video title. */
-internal fun sanitizeFilename(title: String): String =
-    title.replace(Regex("""[\\/:*?"<>|]"""), "_").trim().take(100).ifEmpty { "transcript" }
 
 /**
  * Extracts the first URL from shared text, or null if it contains none. Any URL

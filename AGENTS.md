@@ -117,8 +117,8 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   Descriptions capped at 1000 chars (`capDescription`).
 - "Share as file" (4th checkbox, unchecked by default): the same text goes out as
   a .txt attachment (EXTRA_STREAM) via androidx FileProvider (`shared/` cache dir,
-  one file kept, name from `sanitizeFilename`). Playlist shares force it on
-  (checked+greyed, preference untouched).
+  one file kept, name `yyyyMMdd-HHmm_yt2agent.txt` — the title rides in EXTRA_SUBJECT).
+  Playlist shares force it on (checked+greyed, preference untouched).
 - Error path order: plain retry first (transient DNS/429 errors resolve alone),
   forced binary update + retry only on a second failure — the update download
   is paid only when the binary is the plausible suspect.
