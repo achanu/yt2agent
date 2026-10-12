@@ -1,6 +1,7 @@
 package info.chanu.yt2agent
 
 import org.json.JSONObject
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -111,7 +112,7 @@ class TranscriptTest {
         assertEquals(
             "Le fantôme MK\n\nUne vidéo sur les robots humanoïdes.\n\n" +
                 "Source: youtu.be/dQw4w9WgXcQ\n\n[00:00] bonjour",
-            buildShareText(transcript, "Chapitres :"),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE),
         )
     }
 
@@ -126,7 +127,7 @@ class TranscriptTest {
 
         assertEquals(
             "Source: youtu.be/dQw4w9WgXcQ\n\n[00:00] bonjour",
-            buildShareText(transcript, "Chapitres :"),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE),
         )
     }
 
@@ -143,8 +144,41 @@ class TranscriptTest {
         assertEquals(
             "Titre\n\nDesc\n\nSource: youtu.be/dQw4w9WgXcQ\n\n" +
                 "Chapitres :\n[00:00] Intro\n[01:23] Suite\n\n[00:00] texte",
-            buildShareText(transcript, "Chapitres :"),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE),
         )
+    }
+
+    @Test
+    fun buildsMetadataLineWithAllParts() {
+        val transcript = Transcript(
+            title = "T",
+            description = "",
+            url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            text = "[00:00] x",
+            channel = "DEF CON",
+            durationSeconds = 2715,
+            uploadDate = "20240812",
+        )
+
+        assertEquals(
+            "DEF CON — 45:15 — 12 août 2024",
+            buildInfoLine(transcript, Locale.FRANCE),
+        )
+    }
+
+    @Test
+    fun metadataLineOmitsMissingParts() {
+        val transcript = Transcript(
+            title = "T",
+            description = "",
+            url = "https://youtu.be/dQw4w9WgXcQ",
+            text = "[00:00] x",
+            channel = "",
+            durationSeconds = 0,
+            uploadDate = "",
+        )
+
+        assertEquals("", buildInfoLine(transcript, Locale.FRANCE))
     }
 
     @Test
@@ -180,7 +214,7 @@ class TranscriptTest {
         assertEquals(
             "Regarde twitter.com/x\n\nPlus d'infos sur exemple.fr/page et site.com/a\n\n" +
                 "Source: youtu.be/dQw4w9WgXcQ\n\n[00:00] bonjour",
-            buildShareText(transcript, "Chapitres :"),
+            buildShareText(transcript, "Chapitres :", Locale.FRANCE),
         )
     }
 

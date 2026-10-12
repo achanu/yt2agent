@@ -12,4 +12,5 @@
     <string name="op_player">Videodaten werden geladen…</string>
     <string name="op_downloading">Untertitel werden geladen…</string>
     <string name="op_writing">Dateien werden geschrieben…</string>
+    <string name="elapsed">%1$d s</string>
 </resources>

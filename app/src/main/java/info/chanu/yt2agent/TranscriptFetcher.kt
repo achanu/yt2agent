@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
@@ -19,6 +20,9 @@ data class Transcript(
     val url: String,
     val text: String,
     val chapters: List<Chapter> = emptyList(),
+    val channel: String = "",
+    val durationSeconds: Long = 0,
+    val uploadDate: String = "",
 )
 
 /**
@@ -65,8 +69,14 @@ class TranscriptFetcher(private val context: Context) {
             writeMissing(videoUrl)
             throw e
         } catch (e: Exception) {
-            updateBinary()
-            fetchTranscript(videoUrl, onTitle, onStatus)
+            // Transient errors (DNS, one-off 429) resolve alone; only a second
+            // failure points at the binary and pays the forced update download.
+            try {
+                fetchTranscript(videoUrl, onTitle, onStatus)
+            } catch (e2: Exception) {
+                updateBinary()
+                fetchTranscript(videoUrl, onTitle, onStatus)
+            }
         }
         writeCache(videoUrl, transcript)
         return transcript
@@ -110,6 +120,8 @@ class TranscriptFetcher(private val context: Context) {
             addOption("--ignore-errors")
             addOption("--retries", "3")
             addOption("--retry-sleep", "10")
+            // The recurring ffmpeg-location and po_token warnings only add pipe noise.
+            addOption("--no-warnings")
             addOption("--extractor-args", "youtube:player_client=android_vr")
         }
 
@@ -145,6 +157,9 @@ class TranscriptFetcher(private val context: Context) {
             title = info.optString("title"),
             description = info.optString("description"),
             url = info.optString("webpage_url").ifEmpty { videoUrl },
+            channel = info.optString("channel"),
+            durationSeconds = info.optLong("duration"),
+            uploadDate = info.optString("upload_date"),
             text = insertChapters(captionText, chapters),
             chapters = chapters,
         )
@@ -161,24 +176,44 @@ class TranscriptFetcher(private val context: Context) {
         return try {
             val json = JSONObject(file.readText())
             Transcript(
-                json.optString("title"),
-                json.optString("description"),
-                json.optString("url"),
-                json.optString("text"),
+                title = json.optString("title"),
+                description = json.optString("description"),
+                url = json.optString("url"),
+                text = json.optString("text"),
+                chapters = readChapters(json.optJSONArray("chapters")),
+                channel = json.optString("channel"),
+                durationSeconds = json.optLong("duration"),
+                uploadDate = json.optString("uploadDate"),
             )
         } catch (e: Exception) {
             null
         }
     }
 
+    private fun readChapters(array: JSONArray?): List<Chapter> {
+        if (array == null) return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            array.optJSONObject(i)?.let { Chapter(it.optLong("ms"), it.optString("t")) }
+        }
+    }
+
     private fun writeCache(videoUrl: String, transcript: Transcript) {
         try {
             val dir = File(context.cacheDir, "transcripts").apply { mkdirs() }
+            val chapters = JSONArray().apply {
+                transcript.chapters.forEach {
+                    put(JSONObject().put("ms", it.timeMs).put("t", it.title))
+                }
+            }
             JSONObject()
                 .put("title", transcript.title)
                 .put("description", transcript.description)
                 .put("url", transcript.url)
                 .put("text", transcript.text)
+                .put("chapters", chapters)
+                .put("channel", transcript.channel)
+                .put("duration", transcript.durationSeconds)
+                .put("uploadDate", transcript.uploadDate)
                 .toString()
                 .let { File(dir, "${cacheKey(videoUrl)}.json").writeText(it) }
         } catch (e: Exception) {
@@ -205,9 +240,9 @@ class TranscriptFetcher(private val context: Context) {
         File(File(context.cacheDir, "transcripts"), "missing-${cacheKey(videoUrl)}.json")
 
     private fun cacheKey(videoUrl: String): String =
-        // The v4- prefix invalidates entries written with a different subtitle
-        // preference order (they hold the wrong language).
-        "v4-" + MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
+        // The v5- prefix invalidates entries written before chapters and the
+        // metadata header were cached.
+        "v5-" + MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
             .joinToString("") { "%02x".format(it) }
 
     private fun lastUpdateAgoMillis(): Long =

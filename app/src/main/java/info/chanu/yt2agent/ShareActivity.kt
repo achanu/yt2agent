@@ -4,11 +4,14 @@ import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 /**
  * Receives a link shared from another app, fetches the video transcript, and
@@ -47,6 +50,22 @@ class ShareActivity : Activity() {
 
     private fun startFetch() {
         val generation = ++fetchGeneration
+        val timer = Thread {
+            val start = SystemClock.elapsedRealtime()
+            try {
+                while (generation == fetchGeneration) {
+                    val seconds = (SystemClock.elapsedRealtime() - start) / 1000
+                    runOnUiThread {
+                        findViewById<TextView>(R.id.elapsed).text =
+                            getString(R.string.elapsed, seconds)
+                    }
+                    Thread.sleep(1000)
+                }
+            } catch (e: InterruptedException) {
+                // The fetch ended; stop ticking.
+            }
+        }
+        timer.start()
         Thread {
             try {
                 val transcript = TranscriptFetcher(this).fetch(
@@ -76,6 +95,8 @@ class ShareActivity : Activity() {
                 if (generation == fetchGeneration) {
                     runOnUiThread { showError(e) }
                 }
+            } finally {
+                timer.interrupt()
             }
         }.start()
     }
@@ -99,7 +120,11 @@ class ShareActivity : Activity() {
             putExtra(Intent.EXTRA_SUBJECT, transcript.title.ifEmpty { transcript.url })
             putExtra(
                 Intent.EXTRA_TEXT,
-                buildShareText(transcript, getString(R.string.chapters_label)),
+                buildShareText(
+                    transcript,
+                    getString(R.string.chapters_label),
+                    Locale.getDefault(),
+                ),
             )
         }
         val chooser = Intent.createChooser(send, getString(R.string.share_via)).apply {
@@ -142,13 +167,32 @@ internal fun capDescription(description: String): String =
     }
 
 /**
- * Builds the shared text: title, capped description, video source, chapter summary,
- * then the timestamped transcript. All URLs are scheme-stripped (`stripLinkSchemes`):
- * destination apps that sniff links discard everything else from a text containing
- * a real URL.
+ * Builds the metadata line under the title — "channel — duration — upload date" —
+ * with missing parts omitted.
  */
-internal fun buildShareText(transcript: Transcript, chaptersLabel: String): String = buildString {
+internal fun buildInfoLine(transcript: Transcript, locale: Locale): String = buildList {
+    if (transcript.channel.isNotEmpty()) add(transcript.channel)
+    if (transcript.durationSeconds > 0) add(formatTime(transcript.durationSeconds * 1000))
+    if (transcript.uploadDate.length == 8) {
+        val parsed = SimpleDateFormat("yyyyMMdd", Locale.US).parse(transcript.uploadDate)
+        add(SimpleDateFormat("d MMMM yyyy", locale).format(parsed))
+    }
+}.joinToString(" — ")
+
+/**
+ * Builds the shared text: title, metadata line, capped description, video source,
+ * chapter summary, then the timestamped transcript. All URLs are scheme-stripped
+ * (`stripLinkSchemes`): destination apps that sniff links discard everything else
+ * from a text containing a real URL.
+ */
+internal fun buildShareText(
+    transcript: Transcript,
+    chaptersLabel: String,
+    locale: Locale,
+): String = buildString {
     if (transcript.title.isNotEmpty()) appendLine(stripLinkSchemes(transcript.title)).appendLine()
+    val infoLine = buildInfoLine(transcript, locale)
+    if (infoLine.isNotEmpty()) appendLine(infoLine).appendLine()
     if (transcript.description.isNotEmpty()) {
         appendLine(capDescription(stripLinkSchemes(transcript.description))).appendLine()
     }

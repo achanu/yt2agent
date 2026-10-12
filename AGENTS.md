@@ -86,8 +86,16 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   localized labels.
 - i18n: default strings are English; `values-fr`, `values-de`, `values-es` are full
   translations. Keep them in sync when adding strings.
-- Shared text: chapter summary (`Chapitres :` label, localized) before the transcript;
-  descriptions capped at 1000 chars (`capDescription`).
+- Shared text: title, metadata line (`buildInfoLine`: channel, duration,
+  upload date), capped description, source, chapter summary, transcript.
+  Descriptions capped at 1000 chars (`capDescription`).
+- Error path order: plain retry first (transient DNS/429 errors resolve alone),
+  forced binary update + retry only on a second failure — the update download
+  is paid only when the binary is the plausible suspect.
+- `--no-warnings` keeps the ffmpeg/po_token noise out of the pipes.
+- The fetch screen ticks an elapsed timer (`elapsed` TextView), interrupted by
+  the fetch thread's finally block.
+- Cache: chapters ARE cached (JSONArray of {ms, t}); key prefix v5.
 - Cache: `cacheDir/transcripts/<md5-of-url>.json`, 7-day TTL; read before init, write
   after a successful fetch. Negative cache: `missing-<key>.json`, 24-hour TTL, written
   when a video has no transcript so re-shares fail instantly.
