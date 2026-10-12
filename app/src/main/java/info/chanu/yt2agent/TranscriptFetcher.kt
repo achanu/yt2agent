@@ -27,6 +27,14 @@ data class Transcript(
     val durationSeconds: Long = 0,
     val uploadDate: String = "",
     val sponsorSegments: List<Segment> = emptyList(),
+    val playlistIndex: Int = 0,
+)
+
+/** A multi-video fetch: the playlist title, its video count, and the videos that had captions. */
+data class PlaylistTranscript(
+    val title: String,
+    val total: Int,
+    val entries: List<Transcript>,
 )
 
 /**
@@ -67,21 +75,10 @@ class TranscriptFetcher(private val context: Context) {
         YoutubeDL.getInstance().init(context)
 
         val transcript = try {
-            fetchTranscript(videoUrl, onTitle, onStatus)
+            fetchWithRetries { fetchTranscript(videoUrl, onTitle, onStatus) }
         } catch (e: IllegalStateException) {
             writeMissing(videoUrl)
             throw e
-        } catch (e: Exception) {
-            // Transient errors (DNS, one-off 429) resolve alone; only a second
-            // failure points at the binary and pays the forced update download.
-            try {
-                fetchTranscript(videoUrl, onTitle, onStatus)
-            } catch (e2: Exception) {
-                // A recently updated binary is not the suspect; the failure is
-                // network-ish and re-downloading would only add delay.
-                if (lastUpdateAgoMillis() > RECENT_UPDATE_MILLIS) updateBinary()
-                fetchTranscript(videoUrl, onTitle, onStatus)
-            }
         }
         writeCache(videoUrl, transcript)
 
@@ -90,6 +87,60 @@ class TranscriptFetcher(private val context: Context) {
         // has a head start before the (rare) update download.
         if (lastUpdateAgoMillis() > UPDATE_TTL_MILLIS) updateBinary()
         return transcript
+    }
+
+    /**
+     * Fetches up to [PLAYLIST_MAX] videos of a playlist or channel URL as one
+     * document source: every video with captions becomes an entry, videos without
+     * captions are skipped. Same caching and binary-update policy as [fetch].
+     *
+     * @throws IllegalStateException when no entry has captions
+     * @throws YoutubeDLException when yt-dlp fails even after the retry
+     */
+    fun fetchPlaylist(
+        playlistUrl: String,
+        onTitle: (String) -> Unit = {},
+        onStatus: (String) -> Unit = {},
+    ): PlaylistTranscript {
+        readPlaylistCache(playlistUrl)?.let { cached ->
+            onTitle(cached.title)
+            return cached
+        }
+        if (readMissing(playlistUrl)) error(context.getString(R.string.no_transcript))
+
+        YoutubeDL.getInstance().init(context)
+
+        val playlist = try {
+            fetchWithRetries { fetchPlaylistTranscript(playlistUrl, onTitle, onStatus) }
+        } catch (e: IllegalStateException) {
+            writeMissing(playlistUrl)
+            throw e
+        }
+        writePlaylistCache(playlistUrl, playlist)
+
+        if (lastUpdateAgoMillis() > UPDATE_TTL_MILLIS) updateBinary()
+        return playlist
+    }
+
+    /**
+     * The shared error policy: "no transcript" is permanent and propagates
+     * untouched; other failures get a plain retry (transient DNS/429 errors resolve
+     * alone), then a forced binary update and one last retry — the update download
+     * is paid only when the binary is the plausible suspect.
+     */
+    private fun <T> fetchWithRetries(block: () -> T): T = try {
+        block()
+    } catch (e: IllegalStateException) {
+        throw e
+    } catch (e: Exception) {
+        try {
+            block()
+        } catch (e2: Exception) {
+            // A recently updated binary is not the suspect; the failure is
+            // network-ish and re-downloading would only add delay.
+            if (lastUpdateAgoMillis() > RECENT_UPDATE_MILLIS) updateBinary()
+            block()
+        }
     }
 
     /**
@@ -108,19 +159,7 @@ class TranscriptFetcher(private val context: Context) {
             listFiles()?.forEach { it.delete() }
         }
 
-        val request = YoutubeDLRequest(videoUrl).apply {
-            addOption("--skip-download")
-            addOption("--write-subs")
-            addOption("--write-auto-subs")
-            addOption("--write-info-json")
-            // Only the tracks the selector can pick are downloaded (a multi-ASR
-            // video exposes 16 "-orig" tracks — 15 MB of waste): English and locale
-            // originals, then locale and English. ponytail: a video spoken in a
-            // third language loses its original track and falls back to the locale.
-            addOption("--sub-langs", "en.*-orig,${Locale.getDefault().language}.*-orig,${Locale.getDefault().language},en")
-            // Format preference: json3 (YouTube's native), then vtt/srt for sites
-            // whose extractors do not expose json3.
-            addOption("--sub-format", "json3/vtt/srt")
+        val request = baseRequest(videoUrl).apply {
             addOption("-o", File(outDir, "%(title)s.%(ext)s").absolutePath)
             // One video per share; a URL carrying a list= parameter fetches only
             // the video, and playlist URLs fail with an explicit error.
@@ -128,17 +167,6 @@ class TranscriptFetcher(private val context: Context) {
             // Channel and playlist URLs enumerate every video otherwise; cap any
             // multi-video extraction to its first entry so the fetch stays bounded.
             addOption("--playlist-items", "1")
-            // YouTube 429s timedtext requests from impersonation-less clients;
-            // few retries with a long sleep keeps the request count low.
-            addOption("--ignore-errors")
-            addOption("--retries", "3")
-            addOption("--retry-sleep", "10")
-            // The recurring ffmpeg-location and po_token warnings only add pipe noise.
-            addOption("--no-warnings")
-            // SponsorBlock promotional segments; only the requested categories
-            // land in sponsorblock_chapters (verified: the mark list filters).
-            addOption("--sponsorblock-mark", "sponsor,selfpromo,interaction")
-            addOption("--extractor-args", "youtube:player_client=android_vr")
         }
 
         var titleSurfaced = false
@@ -188,31 +216,157 @@ class TranscriptFetcher(private val context: Context) {
         )
     }
 
+    /**
+     * One yt-dlp pass over up to [PLAYLIST_MAX] entries. The output template prefixes
+     * every file with its zero-padded playlist index, so a video's info json and caption
+     * files share that prefix; entries without captions are skipped, not fatal.
+     */
+    private fun fetchPlaylistTranscript(
+        playlistUrl: String,
+        onTitle: (String) -> Unit,
+        onStatus: (String) -> Unit,
+    ): PlaylistTranscript {
+        val outDir = File(context.cacheDir, "subs").apply {
+            mkdirs()
+            listFiles()?.forEach { it.delete() }
+        }
+
+        val request = baseRequest(playlistUrl).apply {
+            addOption("-o", File(outDir, "%(playlist_index)03d - %(title)s.%(ext)s").absolutePath)
+            addOption("--playlist-items", "1-$PLAYLIST_MAX")
+        }
+
+        synchronized(ytLock) {
+            YoutubeDL.getInstance().execute(request, null) { _, _, line ->
+                val text = line?.trim().orEmpty()
+                if (text.isNotEmpty() && !text.startsWith("WARNING")) {
+                    // The displayed title follows the run: the last entry written wins.
+                    if (text.startsWith(DESTINATION_PREFIX)) onTitle(destinationTitle(text))
+                    onStatus(text)
+                }
+            }
+        }
+
+        val groups = outDir.listFiles().orEmpty()
+            .map { it.name }
+            .groupBy { it.substringBefore(" - ") }
+        val infos = groups.mapValues { (_, names) ->
+            names.firstOrNull { it.endsWith(".info.json") }
+                ?.let { JSONObject(File(outDir, it).readText()) }
+        }
+        val firstInfo = infos.values.filterNotNull().firstOrNull() ?: JSONObject()
+        var total = firstInfo.optInt("playlist_count", firstInfo.optInt("n_entries", 0))
+        val playlistTitle = firstInfo.optString("playlist_title")
+            .ifEmpty { firstInfo.optString("playlist") }
+            .ifEmpty { firstInfo.optString("channel") }
+
+        val entries = groups.mapNotNull { (prefix, names) ->
+            val info = infos[prefix] ?: return@mapNotNull null
+            val subNames = names.filter { SUBTITLE_EXTENSIONS.contains(it.substringAfterLast('.')) }
+            val subName = pickSubtitle(subNames, Locale.getDefault().language)
+                ?: return@mapNotNull null
+            Log.i("yt2agent", "playlist entry $prefix subs: $subNames, picked: $subName")
+            val subFile = File(outDir, subName)
+            val captionText = when (subFile.extension) {
+                "vtt", "srt" -> parseVttOrSrt(subFile.readText())
+                else -> parseJson3(subFile.readText())
+            }
+            val chapters = parseChapters(info)
+            Transcript(
+                title = info.optString("title"),
+                description = info.optString("description"),
+                url = info.optString("webpage_url").ifEmpty { playlistUrl },
+                text = insertChapters(captionText, chapters),
+                chapters = chapters,
+                channel = info.optString("channel"),
+                durationSeconds = info.optLong("duration"),
+                uploadDate = info.optString("upload_date"),
+                sponsorSegments = parseSponsorSegments(info),
+                playlistIndex = info.optInt("playlist_index", prefix.toIntOrNull() ?: 0),
+            )
+        }.sortedBy { it.playlistIndex }
+        if (entries.isEmpty()) error(context.getString(R.string.no_transcript))
+        if (total <= 0) total = entries.size
+        return PlaylistTranscript(playlistTitle, total, entries)
+    }
+
+    /** The options shared by the single-video and playlist fetch paths. */
+    private fun baseRequest(url: String): YoutubeDLRequest = YoutubeDLRequest(url).apply {
+        addOption("--skip-download")
+        addOption("--write-subs")
+        addOption("--write-auto-subs")
+        addOption("--write-info-json")
+        // Only the tracks the selector can pick are downloaded (a multi-ASR
+        // video exposes 16 "-orig" tracks — 15 MB of waste): English and locale
+        // originals, then locale and English. ponytail: a video spoken in a
+        // third language loses its original track and falls back to the locale.
+        addOption(
+            "--sub-langs",
+            "en.*-orig,${Locale.getDefault().language}.*-orig,${Locale.getDefault().language},en",
+        )
+        // Format preference: json3 (YouTube's native), then vtt/srt for sites
+        // whose extractors do not expose json3.
+        addOption("--sub-format", "json3/vtt/srt")
+        // YouTube 429s timedtext requests from impersonation-less clients;
+        // few retries with a long sleep keeps the request count low.
+        addOption("--ignore-errors")
+        addOption("--retries", "3")
+        addOption("--retry-sleep", "10")
+        // The recurring ffmpeg-location and po_token warnings only add pipe noise.
+        addOption("--no-warnings")
+        // SponsorBlock promotional segments; only the requested categories
+        // land in sponsorblock_chapters (verified: the mark list filters).
+        addOption("--sponsorblock-mark", "sponsor,selfpromo,interaction")
+        addOption("--extractor-args", "youtube:player_client=android_vr")
+    }
+
     // ponytail: 1-hour TTL; the cache is a short-term de-dup, not a store.
-    private fun readCache(videoUrl: String): Transcript? {
-        val file = File(File(context.cacheDir, "transcripts"), "${cacheKey(videoUrl)}.json")
+    private fun readCache(videoUrl: String): Transcript? =
+        readTranscriptFile("${cacheKey(videoUrl)}.json")?.let { jsonToTranscript(it) }
+
+    private fun readTranscriptFile(name: String): JSONObject? {
+        val file = File(File(context.cacheDir, "transcripts"), name)
         if (!file.exists() ||
             System.currentTimeMillis() - file.lastModified() > TRANSCRIPT_TTL_MILLIS
         ) {
             return null
         }
         return try {
-            val json = JSONObject(file.readText())
-            Transcript(
+            JSONObject(file.readText())
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // Same TTL and shape as the single-video cache, with the playlist wrapper.
+    private fun readPlaylistCache(playlistUrl: String): PlaylistTranscript? {
+        val json = readTranscriptFile("${cacheKey(playlistUrl)}.json") ?: return null
+        return try {
+            val entries = json.optJSONArray("entries")
+            PlaylistTranscript(
                 title = json.optString("title"),
-                description = json.optString("description"),
-                url = json.optString("url"),
-                text = json.optString("text"),
-                chapters = readChapters(json.optJSONArray("chapters")),
-                channel = json.optString("channel"),
-                durationSeconds = json.optLong("duration"),
-                uploadDate = json.optString("uploadDate"),
-                sponsorSegments = readSegments(json.optJSONArray("sponsorSegments")),
+                total = json.optInt("total"),
+                entries = (0 until (entries?.length() ?: 0)).mapNotNull {
+                    entries?.optJSONObject(it)?.let(::jsonToTranscript)
+                },
             )
         } catch (e: Exception) {
             null
         }
     }
+
+    private fun jsonToTranscript(json: JSONObject): Transcript = Transcript(
+        title = json.optString("title"),
+        description = json.optString("description"),
+        url = json.optString("url"),
+        text = json.optString("text"),
+        chapters = readChapters(json.optJSONArray("chapters")),
+        channel = json.optString("channel"),
+        durationSeconds = json.optLong("duration"),
+        uploadDate = json.optString("uploadDate"),
+        sponsorSegments = readSegments(json.optJSONArray("sponsorSegments")),
+        playlistIndex = json.optInt("playlistIndex", 0),
+    )
 
     private fun readChapters(array: JSONArray?): List<Chapter> {
         if (array == null) return emptyList()
@@ -231,35 +385,49 @@ class TranscriptFetcher(private val context: Context) {
     }
 
     private fun writeCache(videoUrl: String, transcript: Transcript) {
+        writeTranscriptFile("${cacheKey(videoUrl)}.json", transcriptToJson(transcript))
+    }
+
+    private fun writePlaylistCache(playlistUrl: String, playlist: PlaylistTranscript) {
+        val entries = JSONArray().apply { playlist.entries.forEach { put(transcriptToJson(it)) } }
+        writeTranscriptFile(
+            "${cacheKey(playlistUrl)}.json",
+            JSONObject()
+                .put("title", playlist.title)
+                .put("total", playlist.total)
+                .put("entries", entries),
+        )
+    }
+
+    private fun writeTranscriptFile(name: String, json: JSONObject) {
         try {
             val dir = File(context.cacheDir, "transcripts").apply { mkdirs() }
-            val chapters = JSONArray().apply {
-                transcript.chapters.forEach {
-                    put(JSONObject().put("ms", it.timeMs).put("t", it.title))
-                }
-            }
-            val segments = JSONArray().apply {
-                transcript.sponsorSegments.forEach {
-                    put(JSONObject().put("s", it.startMs).put("e", it.endMs).put("c", it.category))
-                }
-            }
-            JSONObject()
-                .put("title", transcript.title)
-                .put("description", transcript.description)
-                .put("url", transcript.url)
-                .put("text", transcript.text)
-                .put("chapters", chapters)
-                .put("channel", transcript.channel)
-                .put("duration", transcript.durationSeconds)
-                .put("uploadDate", transcript.uploadDate)
-                .put("sponsorSegments", segments)
-                .toString()
-                .let { File(dir, "${cacheKey(videoUrl)}.json").writeText(it) }
+            File(dir, name).writeText(json.toString())
             pruneCache()
         } catch (e: Exception) {
             // A failed cache write is not fatal.
         }
     }
+
+    private fun transcriptToJson(transcript: Transcript): JSONObject = JSONObject()
+        .put("title", transcript.title)
+        .put("description", transcript.description)
+        .put("url", transcript.url)
+        .put("text", transcript.text)
+        .put("chapters", JSONArray().apply {
+            transcript.chapters.forEach {
+                put(JSONObject().put("ms", it.timeMs).put("t", it.title))
+            }
+        })
+        .put("channel", transcript.channel)
+        .put("duration", transcript.durationSeconds)
+        .put("uploadDate", transcript.uploadDate)
+        .put("sponsorSegments", JSONArray().apply {
+            transcript.sponsorSegments.forEach {
+                put(JSONObject().put("s", it.startMs).put("e", it.endMs).put("c", it.category))
+            }
+        })
+        .put("playlistIndex", transcript.playlistIndex)
 
     /** Drops expired entries, then keeps the cache dir under a size cap. */
     private fun pruneCache() {
@@ -306,9 +474,9 @@ class TranscriptFetcher(private val context: Context) {
         File(File(context.cacheDir, "transcripts"), "missing-${cacheKey(videoUrl)}.json")
 
     private fun cacheKey(videoUrl: String): String =
-        // The v6- prefix invalidates entries written before sponsor segments
-        // were cached.
-        "v6-" + MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
+        // The v7- prefix invalidates entries written before the playlist path
+        // (and its playlistIndex field) existed.
+        "v7-" + MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
             .joinToString("") { "%02x".format(it) }
 
     private fun lastUpdateAgoMillis(): Long =
@@ -326,6 +494,7 @@ class TranscriptFetcher(private val context: Context) {
 
     private companion object {
         val SUBTITLE_EXTENSIONS = setOf("json3", "vtt", "srt")
+        const val PLAYLIST_MAX = 30
         const val UPDATE_TTL_MILLIS = 72L * 60 * 60 * 1000
         const val RECENT_UPDATE_MILLIS = 12L * 60 * 60 * 1000
         const val TRANSCRIPT_TTL_MILLIS = 60L * 60 * 1000

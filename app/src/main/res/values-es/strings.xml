@@ -18,4 +18,5 @@
     <string name="copy_details">Copiar detalles</string>
     <string name="copied">Copiado</string>
     <string name="share_as_file">Compartir como archivo</string>
+    <string name="playlist_videos">%1$d vídeos</string>
 </resources>

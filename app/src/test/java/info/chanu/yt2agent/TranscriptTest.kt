@@ -3,7 +3,9 @@ package info.chanu.yt2agent
 import org.json.JSONObject
 import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TranscriptTest {
@@ -277,6 +279,71 @@ class TranscriptTest {
         assertEquals(
             "T\n\nSource: youtu.be/7q8Gu4amvl4\n\n[03:00] content",
             buildShareText(transcript, "Chapitres :", Locale.FRANCE, true, true, true),
+        )
+    }
+
+    @Test
+    fun detectsPlaylistAndChannelUrls() {
+        assertTrue(isPlaylistUrl("https://www.youtube.com/playlist?list=PL123abc"))
+        assertTrue(isPlaylistUrl("https://m.youtube.com/@somechannel"))
+        assertTrue(isPlaylistUrl("https://youtube.com/@handle/videos"))
+        assertTrue(isPlaylistUrl("https://www.youtube.com/channel/UC1234"))
+        assertTrue(isPlaylistUrl("https://www.youtube.com/c/SomeName"))
+        assertTrue(isPlaylistUrl("https://www.youtube.com/user/OldName"))
+        assertTrue(isPlaylistUrl("https://music.youtube.com/playlist?list=RD123"))
+    }
+
+    @Test
+    fun nonPlaylistUrlsStaySingleVideo() {
+        assertFalse(isPlaylistUrl("https://www.youtube.com/watch?v=abc&list=PL123"))
+        assertFalse(isPlaylistUrl("https://youtu.be/abc123"))
+        assertFalse(isPlaylistUrl("https://www.youtube.com/shorts/abc123"))
+        assertFalse(isPlaylistUrl("https://vimeo.com/22439234"))
+        assertFalse(isPlaylistUrl("https://vimeo.com/@somechannel"))
+        assertFalse(isPlaylistUrl("https://notyoutube.com/playlist?list=PL1"))
+    }
+
+    @Test
+    fun buildsPlaylistDocumentWithIndexBlocks() {
+        val playlist = PlaylistTranscript(
+            title = "Ma playlist",
+            total = 3,
+            entries = listOf(
+                Transcript(
+                    title = "Première",
+                    description = "Ignorée dans le document",
+                    url = "https://www.youtube.com/watch?v=one",
+                    text = "[00:00] salut\n[01:30] suite",
+                    channel = "Chaine",
+                    durationSeconds = 90,
+                    uploadDate = "20240812",
+                    playlistIndex = 1,
+                    sponsorSegments = listOf(Segment(0, 59_000, "sponsor")),
+                ),
+                Transcript(
+                    title = "Deuxième",
+                    description = "",
+                    url = "https://www.youtube.com/watch?v=two",
+                    text = "[00:00] texto",
+                    playlistIndex = 3,
+                ),
+            ),
+        )
+
+        assertEquals(
+            "Ma playlist\n3 videos\n\n" +
+                "[1/3] Première\nChaine — 01:30 — 12 août 2024\n\n" +
+                "[00:00] salut\n[01:30] suite\n\n" +
+                "[3/3] Deuxième\n\n[00:00] texto",
+            buildPlaylistDocument(playlist, Locale.FRANCE, "%1\$d videos", false, false),
+        )
+        // Sponsor removal is applied per video; the description never appears.
+        assertEquals(
+            "Ma playlist\n3 videos\n\n" +
+                "[1/3] Première\nChaine — 01:30 — 12 août 2024\n\n" +
+                "[01:30] suite\n\n" +
+                "[3/3] Deuxième\n\n[00:00] texto",
+            buildPlaylistDocument(playlist, Locale.FRANCE, "%1\$d videos", true, false),
         )
     }
 

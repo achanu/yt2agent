@@ -37,11 +37,11 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 ## Layout
 
 - `app/src/main/java/info/chanu/yt2agent/ShareActivity.kt` — intent handling, first-URL
-  extraction (`findSharedUrl`), share-text building (`buildShareText`,
-  `stripLinkSchemes`), share out.
+  extraction (`findSharedUrl`), playlist detection (`isPlaylistUrl`), share-text building
+  (`buildShareText`, `buildPlaylistDocument`, `stripLinkSchemes`), share out.
 - `app/src/main/java/info/chanu/yt2agent/TranscriptFetcher.kt` — single yt-dlp pass
-  (`--write-info-json` + json3 captions), 7-day transcript cache, `parseJson3`
-  flattening, `insertChapters`, `formatTime`.
+  (`--write-info-json` + json3 captions), playlist pass (`fetchPlaylist`), transcript
+  cache, `parseJson3` flattening, `insertChapters`, `formatTime`.
 - `app/src/test/java/info/chanu/yt2agent/TranscriptTest.kt` — unit tests for the pure
   logic (URL extraction, json3 parsing, chapters, share text).
 
@@ -76,9 +76,15 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   only the tracks the selector can pick (multi-ASR videos expose 16 "-orig" tracks);
   `--retries 3 --retry-sleep 10` keeps 429-storm request counts low; transcripts are
   cached 7 days and no-transcript failures 24 h, so cache hits cost zero requests.
-- `--no-playlist` + `--playlist-items 1`: one video per share. Channel URLs
+- Single-video path: `--no-playlist` + `--playlist-items 1`. Channel URLs
   enumerate every video otherwise (a channel link used to hang the fetch
   indefinitely); any multi-video extraction is capped to its first entry.
+- Playlist path (`isPlaylistUrl`: `youtube.com/playlist`, `/@handle`, `/channel/`,
+  `/c/`, `/user/`; `watch?v=…&list=…` stays a single video): `--playlist-items 1-30`
+  (`PLAYLIST_MAX`), output template `%(playlist_index)03d - %(title)s` so each video's
+  info json and captions group by index prefix. Entries without captions are skipped,
+  not fatal. The document is a playlist header plus `[i/N]` blocks (title, info line,
+  transcript); per-video descriptions and sources stay out. Cache key prefix v7.
 - Cache hits hold the fetch screen for one second so the checkboxes are
   reachable (`MIN_FETCH_DISPLAY_MILLIS`).
 - Fetch failures show `activity_error` (message + Copy details + Retry + Cancel);
@@ -96,8 +102,8 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   Descriptions capped at 1000 chars (`capDescription`).
 - "Share as file" (4th checkbox, unchecked by default): the same text goes out as
   a .txt attachment (EXTRA_STREAM) via androidx FileProvider (`shared/` cache dir,
-  one file kept, name from `sanitizeFilename`). The playlist rule (checked+greyed)
-  is reserved for future multi-transcript support.
+  one file kept, name from `sanitizeFilename`). Playlist shares force it on
+  (checked+greyed, preference untouched).
 - Error path order: plain retry first (transient DNS/429 errors resolve alone),
   forced binary update + retry only on a second failure — the update download
   is paid only when the binary is the plausible suspect.
@@ -108,7 +114,8 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   list filters what lands in sponsorblock_chapters (verified), so it is exactly
   the removable set. Segments are cached ({s, e, c}); key prefix v6. The checkbox
   on the fetch screen persists via SharedPreferences (remove_sponsors, default
-  false) and filters at share time — retroactive on cached entries.
+  false) and filters at share time — retroactive on cached entries. Key prefix v7
+  (bumped with the playlist path).
 - Cache: chapters ARE cached (JSONArray of {ms, t}).
 - Cache: `cacheDir/transcripts/<md5-of-url>.json`, 1-hour TTL (short-term de-dup);
   read before init, write after a successful fetch. Negative cache: `missing-<key>.json`,
