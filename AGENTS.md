@@ -67,6 +67,11 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   `-orig` alone is not trustworthy; `pickSubtitle` logs the available files and
   the one it picks.
 - Fetch failures show `activity_error` (message + Retry button) instead of a toast.
+- Day/night: `AppTheme` has a light parent in `values/themes.xml` and a dark one in
+  `values-night/themes.xml`; no hardcoded colors in layouts.
+- Progress: yt-dlp output lines flow to the `operation` TextView via the
+  `execute` callback (WARNING lines filtered); no percentage exists because
+  extraction, the slow part, has none.
 - Cache: `cacheDir/transcripts/<md5-of-url>.json`, 7-day TTL; read before init, write
   after a successful fetch.
 - Error surface is a Toast + `finish()`. Toast text is filtered to the first

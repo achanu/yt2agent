@@ -16,4 +16,14 @@
         android:paddingTop="16dp"
         android:text="@string/fetching" />
 
+    <TextView
+        android:id="@+id/operation"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="1"
+        android:paddingTop="8dp"
+        android:textSize="12sp" />
+
 </LinearLayout>

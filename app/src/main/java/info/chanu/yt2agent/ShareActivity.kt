@@ -33,12 +33,20 @@ class ShareActivity : Activity() {
     private fun startFetch() {
         Thread {
             try {
-                val transcript = TranscriptFetcher(this).fetch(videoUrl) { title ->
-                    runOnUiThread {
-                        findViewById<TextView>(R.id.status).text =
-                            getString(R.string.fetching_named, title)
-                    }
-                }
+                val transcript = TranscriptFetcher(this).fetch(
+                    videoUrl,
+                    onTitle = { title ->
+                        runOnUiThread {
+                            findViewById<TextView>(R.id.status).text =
+                                getString(R.string.fetching_named, title)
+                        }
+                    },
+                    onStatus = { line ->
+                        runOnUiThread {
+                            findViewById<TextView>(R.id.operation).text = line
+                        }
+                    },
+                )
                 runOnUiThread { shareTranscript(transcript) }
             } catch (e: Exception) {
                 Log.e("yt2agent", "transcript fetch failed", e)

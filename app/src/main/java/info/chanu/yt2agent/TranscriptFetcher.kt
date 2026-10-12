@@ -22,7 +22,8 @@ class TranscriptFetcher(private val context: Context) {
     /**
      * Returns the cached transcript for [videoUrl] when fresh, or fetches it. Blocks;
      * call from a background thread. [onTitle] is invoked on the calling thread as
-     * soon as the title is known.
+     * soon as the title is known; [onStatus] receives the current yt-dlp output
+     * line (no percentage exists: the slow part, extraction, has none).
      *
      * The yt-dlp binary is checked for updates every 72 hours; a failed fetch forces a
      * redownload and one retry (a stale binary is the usual cause of YouTube 429s).
@@ -30,7 +31,11 @@ class TranscriptFetcher(private val context: Context) {
      * @throws IllegalStateException when the video has no transcript
      * @throws YoutubeDLException when yt-dlp fails even after the retry
      */
-    fun fetch(videoUrl: String, onTitle: (String) -> Unit = {}): Transcript {
+    fun fetch(
+        videoUrl: String,
+        onTitle: (String) -> Unit = {},
+        onStatus: (String) -> Unit = {},
+    ): Transcript {
         readCache(videoUrl)?.let { cached ->
             onTitle(cached.title)
             return cached
@@ -44,13 +49,13 @@ class TranscriptFetcher(private val context: Context) {
         if (lastUpdateAgoMillis() > UPDATE_TTL_MILLIS) Thread { updateBinary() }.start()
 
         val transcript = try {
-            fetchTranscript(videoUrl, onTitle)
+            fetchTranscript(videoUrl, onTitle, onStatus)
         } catch (e: IllegalStateException) {
             // No transcript on this video: a fresh binary would not change that.
             throw e
         } catch (e: Exception) {
             updateBinary()
-            fetchTranscript(videoUrl, onTitle)
+            fetchTranscript(videoUrl, onTitle, onStatus)
         }
         writeCache(videoUrl, transcript)
         return transcript
@@ -61,7 +66,11 @@ class TranscriptFetcher(private val context: Context) {
      * captions. yt-dlp writes the info file right after extraction, before the
      * subtitles, so a poller surfaces the title while the download continues.
      */
-    private fun fetchTranscript(videoUrl: String, onTitle: (String) -> Unit): Transcript {
+    private fun fetchTranscript(
+        videoUrl: String,
+        onTitle: (String) -> Unit,
+        onStatus: (String) -> Unit,
+    ): Transcript {
         val outDir = File(context.cacheDir, "subs").apply {
             mkdirs()
             listFiles()?.forEach { it.delete() }
@@ -101,7 +110,9 @@ class TranscriptFetcher(private val context: Context) {
         }
         titleThread.start()
 
-        YoutubeDL.getInstance().execute(request)
+        YoutubeDL.getInstance().execute(request, null) { _, _, line ->
+            if (!line.isNullOrBlank() && !line.startsWith("WARNING")) onStatus(line.trim())
+        }
         titleThread.join()
 
         val info = if (infoFile.exists()) JSONObject(infoFile.readText()) else JSONObject()
