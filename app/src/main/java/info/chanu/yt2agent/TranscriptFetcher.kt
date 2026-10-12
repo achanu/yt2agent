@@ -184,12 +184,18 @@ class TranscriptFetcher(private val context: Context) {
         }
 
         val infoFile = outDir.listFiles()?.firstOrNull { it.name.endsWith(".info.json") }
-        val info = if (infoFile != null) JSONObject(infoFile.readText()) else JSONObject()
+        val info = if (infoFile != null && infoFile.length() <= MAX_PARSE_BYTES) {
+            JSONObject(infoFile.readText())
+        } else {
+            JSONObject()
+        }
         val chapters = parseChapters(info)
         val sponsorSegments = parseSponsorSegments(info)
 
         // yt-dlp writes every requested language that exists; pick deterministically.
-        val subFiles = outDir.listFiles()?.filter { it.extension in SUBTITLE_EXTENSIONS }.orEmpty()
+        val subFiles = outDir.listFiles()
+            ?.filter { it.extension in SUBTITLE_EXTENSIONS && it.length() <= MAX_PARSE_BYTES }
+            .orEmpty()
         val subName = pickSubtitle(subFiles.map { it.name }, Locale.getDefault().language)
             ?: error(context.getString(R.string.no_transcript))
         Log.i(
@@ -263,19 +269,25 @@ class TranscriptFetcher(private val context: Context) {
         val groups = outDir.listFiles().orEmpty()
             .map { it.name }
             .groupBy { it.substringBefore(" - ") }
-        val infos = groups.mapValues { (_, names) ->
-            names.firstOrNull { it.endsWith(".info.json") }
-                ?.let { JSONObject(File(outDir, it).readText()) }
-        }
-        val firstInfo = infos.values.filterNotNull().firstOrNull() ?: JSONObject()
+        // Read each entry's info json inside its own loop turn: keeping every
+        // JSONObject alive at once cost tens of MB on 30-entry playlists.
+        val firstInfoFile = outDir.listFiles()
+            ?.firstOrNull { it.name.endsWith(".info.json") && it.length() <= MAX_PARSE_BYTES }
+        val firstInfo = if (firstInfoFile != null) JSONObject(firstInfoFile.readText()) else JSONObject()
         var total = firstInfo.optInt("playlist_count", firstInfo.optInt("n_entries", 0))
         val playlistTitle = firstInfo.optString("playlist_title")
             .ifEmpty { firstInfo.optString("playlist") }
             .ifEmpty { firstInfo.optString("channel") }
 
         val entries = groups.mapNotNull { (prefix, names) ->
-            val info = infos[prefix] ?: return@mapNotNull null
-            val subNames = names.filter { SUBTITLE_EXTENSIONS.contains(it.substringAfterLast('.')) }
+            // Oversized files (a multi-hour entry's word-level auto-captions reach
+            // tens of MB) would OOM the heap: skip the entry, like a caption-less one.
+            val infoFile = names.firstOrNull { it.endsWith(".info.json") } ?: return@mapNotNull null
+            if (File(outDir, infoFile).length() > MAX_PARSE_BYTES) return@mapNotNull null
+            val info = JSONObject(File(outDir, infoFile).readText())
+            val subNames = names
+                .filter { SUBTITLE_EXTENSIONS.contains(it.substringAfterLast('.')) }
+                .filter { File(outDir, it).length() <= MAX_PARSE_BYTES }
             val subName = pickSubtitle(subNames, Locale.getDefault().language)
                 ?: return@mapNotNull null
             Log.i("yt2agent", "playlist entry $prefix subs: $subNames, picked: $subName")
@@ -512,6 +524,9 @@ class TranscriptFetcher(private val context: Context) {
         val SUBTITLE_EXTENSIONS = setOf("json3", "vtt", "srt")
         const val SESSION_FILE = "session.txt"
         const val PLAYLIST_MAX = 30
+        // ponytail: 10 MB ≈ many hours of word-level captions; bigger files are
+        // skipped — reading one into the heap OOMs (org.json needs the whole string).
+        const val MAX_PARSE_BYTES = 10L * 1024 * 1024
         const val UPDATE_TTL_MILLIS = 72L * 60 * 60 * 1000
         const val RECENT_UPDATE_MILLIS = 12L * 60 * 60 * 1000
         const val TRANSCRIPT_TTL_MILLIS = 60L * 60 * 1000

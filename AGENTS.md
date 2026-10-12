@@ -91,7 +91,10 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   + `--force-download-archive` (required with `--skip-download`) in the subs dir; a
   `session.txt` marker (same playlist, < 1 h old) keeps the dir across retries — the
   fetch chain AND the Retry button continue after the failed entry instead of
-  restarting. Cache key prefix v7.
+  restarting. Files past 10 MB (`MAX_PARSE_BYTES` — a multi-hour entry's word-level
+  auto-captions) are never read: one such file OOM'd the heap mid-parse (org.json
+  needs the whole string); the entry is skipped like a caption-less one, and the
+  single-video path picks a smaller track instead. Cache key prefix v7.
 - Cache hits hold the fetch screen for one second so the checkboxes are
   reachable (`MIN_FETCH_DISPLAY_MILLIS`).
 - Fetch failures show `activity_error` (message + Copy details + Retry + Cancel);
