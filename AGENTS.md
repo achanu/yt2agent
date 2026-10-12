@@ -95,7 +95,11 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   restarting. Files past 10 MB (`MAX_PARSE_BYTES` — a multi-hour entry's word-level
   auto-captions) are never read: one such file OOM'd the heap mid-parse (org.json
   needs the whole string); the entry is skipped like a caption-less one, and the
-  single-video path picks a smaller track instead. Cache key prefix v7.
+  single-video path picks a smaller track instead. `--ignore-errors` swallows entry
+  failures silently: when the info-json count is short of the reported entry count,
+  one extra pass refetches the dropped entries, and a still-partial result
+  (`PlaylistTranscript.complete = false`) is never cached — a re-share resumes from
+  the archive. Cache key prefix v7.
 - Cache hits hold the fetch screen for one second so the checkboxes are
   reachable (`MIN_FETCH_DISPLAY_MILLIS`).
 - Fetch failures show `activity_error` (message + Copy details + Retry + Cancel);

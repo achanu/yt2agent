@@ -35,6 +35,8 @@ data class PlaylistTranscript(
     val title: String,
     val total: Int,
     val entries: List<Transcript>,
+    /** False when some entries failed to fetch (network), so the result is not cached. */
+    val complete: Boolean = true,
 )
 
 /**
@@ -116,7 +118,9 @@ class TranscriptFetcher(private val context: Context) {
             writeMissing(playlistUrl)
             throw e
         }
-        writePlaylistCache(playlistUrl, playlist)
+        // A partial playlist is not cached: a re-share resumes from the archive
+        // and refetches the entries the network dropped.
+        if (playlist.complete) writePlaylistCache(playlistUrl, playlist)
 
         if (lastUpdateAgoMillis() > UPDATE_TTL_MILLIS) updateBinary()
         return playlist
@@ -255,26 +259,48 @@ class TranscriptFetcher(private val context: Context) {
             addOption("--force-download-archive")
         }
 
-        synchronized(ytLock) {
-            YoutubeDL.getInstance().execute(request, null) { _, _, line ->
-                val text = line?.trim().orEmpty()
-                if (text.isNotEmpty() && !text.startsWith("WARNING")) {
-                    // The displayed title follows the run: the last entry written wins.
-                    if (text.startsWith(DESTINATION_PREFIX)) onTitle(destinationTitle(text))
-                    onStatus(text)
-                }
+        runPlaylistPass(request, onTitle, onStatus)
+        var playlist = parsePlaylistFiles(outDir, playlistUrl)
+        // --ignore-errors swallows entry failures: a congested network returns
+        // the playlist with holes. One more pass — the download archive makes it
+        // cheap — refetches only the dropped entries.
+        if (!playlist.complete) {
+            runPlaylistPass(request, onTitle, onStatus)
+            playlist = parsePlaylistFiles(outDir, playlistUrl)
+        }
+        if (playlist.entries.isEmpty()) error(context.getString(R.string.no_transcript))
+        return playlist
+    }
+
+    private fun runPlaylistPass(
+        request: YoutubeDLRequest,
+        onTitle: (String) -> Unit,
+        onStatus: (String) -> Unit,
+    ) = synchronized(ytLock) {
+        YoutubeDL.getInstance().execute(request, null) { _, _, line ->
+            val text = line?.trim().orEmpty()
+            if (text.isNotEmpty() && !text.startsWith("WARNING")) {
+                // The displayed title follows the run: the last entry written wins.
+                if (text.startsWith(DESTINATION_PREFIX)) onTitle(destinationTitle(text))
+                onStatus(text)
             }
         }
+    }
 
-        val groups = outDir.listFiles().orEmpty()
-            .map { it.name }
-            .groupBy { it.substringBefore(" - ") }
-        // Read each entry's info json inside its own loop turn: keeping every
-        // JSONObject alive at once cost tens of MB on 30-entry playlists.
-        val firstInfoFile = outDir.listFiles()
-            ?.firstOrNull { it.name.endsWith(".info.json") && it.length() <= MAX_PARSE_BYTES }
+    /**
+     * Parses the files yt-dlp left in [outDir] into a playlist, one info json at a
+     * time. [PlaylistTranscript.complete] compares the info json count with the
+     * entry count yt-dlp reported: entries missing files are fetch failures.
+     */
+    private fun parsePlaylistFiles(outDir: File, playlistUrl: String): PlaylistTranscript {
+        val files = outDir.listFiles().orEmpty()
+        val groups = files.map { it.name }.groupBy { it.substringBefore(" - ") }
+        val infoCount = files.count { it.name.endsWith(".info.json") }
+        val firstInfoFile = files.firstOrNull {
+            it.name.endsWith(".info.json") && it.length() <= MAX_PARSE_BYTES
+        }
         val firstInfo = if (firstInfoFile != null) JSONObject(firstInfoFile.readText()) else JSONObject()
-        var total = firstInfo.optInt("playlist_count", firstInfo.optInt("n_entries", 0))
+        val infoTotal = firstInfo.optInt("playlist_count", firstInfo.optInt("n_entries", 0))
         val playlistTitle = firstInfo.optString("playlist_title")
             .ifEmpty { firstInfo.optString("playlist") }
             .ifEmpty { firstInfo.optString("channel") }
@@ -282,9 +308,9 @@ class TranscriptFetcher(private val context: Context) {
         val entries = groups.mapNotNull { (prefix, names) ->
             // Oversized files (a multi-hour entry's word-level auto-captions reach
             // tens of MB) would OOM the heap: skip the entry, like a caption-less one.
-            val infoFile = names.firstOrNull { it.endsWith(".info.json") } ?: return@mapNotNull null
-            if (File(outDir, infoFile).length() > MAX_PARSE_BYTES) return@mapNotNull null
-            val info = JSONObject(File(outDir, infoFile).readText())
+            val infoName = names.firstOrNull { it.endsWith(".info.json") } ?: return@mapNotNull null
+            if (File(outDir, infoName).length() > MAX_PARSE_BYTES) return@mapNotNull null
+            val info = JSONObject(File(outDir, infoName).readText())
             val subNames = names
                 .filter { SUBTITLE_EXTENSIONS.contains(it.substringAfterLast('.')) }
                 .filter { File(outDir, it).length() <= MAX_PARSE_BYTES }
@@ -310,9 +336,12 @@ class TranscriptFetcher(private val context: Context) {
                 playlistIndex = info.optInt("playlist_index", prefix.toIntOrNull() ?: 0),
             )
         }.sortedBy { it.playlistIndex }
-        if (entries.isEmpty()) error(context.getString(R.string.no_transcript))
-        if (total <= 0) total = entries.size
-        return PlaylistTranscript(playlistTitle, total, entries)
+        return PlaylistTranscript(
+            title = playlistTitle,
+            total = if (infoTotal > 0) infoTotal else entries.size,
+            entries = entries,
+            complete = infoTotal <= 0 || infoCount >= minOf(infoTotal, PLAYLIST_MAX),
+        )
     }
 
     /** The options shared by the single-video and playlist fetch paths. */
