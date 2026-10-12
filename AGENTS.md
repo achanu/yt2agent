@@ -95,7 +95,12 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 - `--no-warnings` keeps the ffmpeg/po_token noise out of the pipes.
 - The fetch screen ticks an elapsed timer (`elapsed` TextView), interrupted by
   the fetch thread's finally block.
-- Cache: chapters ARE cached (JSONArray of {ms, t}); key prefix v5.
+- SponsorBlock: `--sponsorblock-mark sponsor,selfpromo,interaction` — the mark
+  list filters what lands in sponsorblock_chapters (verified), so it is exactly
+  the removable set. Segments are cached ({s, e, c}); key prefix v6. The checkbox
+  on the fetch screen persists via SharedPreferences (remove_sponsors, default
+  false) and filters at share time — retroactive on cached entries.
+- Cache: chapters ARE cached (JSONArray of {ms, t}).
 - Cache: `cacheDir/transcripts/<md5-of-url>.json`, 7-day TTL; read before init, write
   after a successful fetch. Negative cache: `missing-<key>.json`, 24-hour TTL, written
   when a video has no transcript so re-shares fail instantly.

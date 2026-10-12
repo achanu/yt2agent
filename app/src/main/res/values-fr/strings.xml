@@ -13,4 +13,4 @@
     <string name="op_downloading">Téléchargement des sous-titres…</string>
     <string name="op_writing">Écriture des fichiers…</string>
     <string name="elapsed">%1$d s</string>
-</resources>
+    <string name="remove_sponsors">Retirer les segments sponsor</string>\n</resources>

@@ -13,6 +13,9 @@ import java.util.Locale
 /** A video chapter marker. */
 data class Chapter(val timeMs: Long, val title: String)
 
+/** A SponsorBlock promotional segment inside the video. */
+data class Segment(val startMs: Long, val endMs: Long, val category: String)
+
 /** Video metadata plus the flattened transcript text. */
 data class Transcript(
     val title: String,
@@ -23,6 +26,7 @@ data class Transcript(
     val channel: String = "",
     val durationSeconds: Long = 0,
     val uploadDate: String = "",
+    val sponsorSegments: List<Segment> = emptyList(),
 )
 
 /**
@@ -122,6 +126,9 @@ class TranscriptFetcher(private val context: Context) {
             addOption("--retry-sleep", "10")
             // The recurring ffmpeg-location and po_token warnings only add pipe noise.
             addOption("--no-warnings")
+            // SponsorBlock promotional segments; only the requested categories
+            // land in sponsorblock_chapters (verified: the mark list filters).
+            addOption("--sponsorblock-mark", "sponsor,selfpromo,interaction")
             addOption("--extractor-args", "youtube:player_client=android_vr")
         }
 
@@ -140,12 +147,16 @@ class TranscriptFetcher(private val context: Context) {
         val infoFile = outDir.listFiles()?.firstOrNull { it.name.endsWith(".info.json") }
         val info = if (infoFile != null) JSONObject(infoFile.readText()) else JSONObject()
         val chapters = parseChapters(info)
+        val sponsorSegments = parseSponsorSegments(info)
 
         // yt-dlp writes every requested language that exists; pick deterministically.
         val subFiles = outDir.listFiles()?.filter { it.extension in SUBTITLE_EXTENSIONS }.orEmpty()
         val subName = pickSubtitle(subFiles.map { it.name }, Locale.getDefault().language)
             ?: error(context.getString(R.string.no_transcript))
-        Log.i("yt2agent", "subs available: ${subFiles.map { it.name }}, picked: $subName")
+        Log.i(
+            "yt2agent",
+            "subs available: ${subFiles.map { it.name }}, picked: $subName, sponsor segments: ${sponsorSegments.size}",
+        )
 
         val subFile = File(outDir, subName)
         val captionText = when (subFile.extension) {
@@ -162,6 +173,7 @@ class TranscriptFetcher(private val context: Context) {
             uploadDate = info.optString("upload_date"),
             text = insertChapters(captionText, chapters),
             chapters = chapters,
+            sponsorSegments = sponsorSegments,
         )
     }
 
@@ -184,6 +196,7 @@ class TranscriptFetcher(private val context: Context) {
                 channel = json.optString("channel"),
                 durationSeconds = json.optLong("duration"),
                 uploadDate = json.optString("uploadDate"),
+                sponsorSegments = readSegments(json.optJSONArray("sponsorSegments")),
             )
         } catch (e: Exception) {
             null
@@ -197,12 +210,26 @@ class TranscriptFetcher(private val context: Context) {
         }
     }
 
+    private fun readSegments(array: JSONArray?): List<Segment> {
+        if (array == null) return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            array.optJSONObject(i)?.let {
+                Segment(it.optLong("s"), it.optLong("e"), it.optString("c"))
+            }
+        }
+    }
+
     private fun writeCache(videoUrl: String, transcript: Transcript) {
         try {
             val dir = File(context.cacheDir, "transcripts").apply { mkdirs() }
             val chapters = JSONArray().apply {
                 transcript.chapters.forEach {
                     put(JSONObject().put("ms", it.timeMs).put("t", it.title))
+                }
+            }
+            val segments = JSONArray().apply {
+                transcript.sponsorSegments.forEach {
+                    put(JSONObject().put("s", it.startMs).put("e", it.endMs).put("c", it.category))
                 }
             }
             JSONObject()
@@ -214,6 +241,7 @@ class TranscriptFetcher(private val context: Context) {
                 .put("channel", transcript.channel)
                 .put("duration", transcript.durationSeconds)
                 .put("uploadDate", transcript.uploadDate)
+                .put("sponsorSegments", segments)
                 .toString()
                 .let { File(dir, "${cacheKey(videoUrl)}.json").writeText(it) }
         } catch (e: Exception) {
@@ -240,9 +268,9 @@ class TranscriptFetcher(private val context: Context) {
         File(File(context.cacheDir, "transcripts"), "missing-${cacheKey(videoUrl)}.json")
 
     private fun cacheKey(videoUrl: String): String =
-        // The v5- prefix invalidates entries written before chapters and the
-        // metadata header were cached.
-        "v5-" + MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
+        // The v6- prefix invalidates entries written before sponsor segments
+        // were cached.
+        "v6-" + MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
             .joinToString("") { "%02x".format(it) }
 
     private fun lastUpdateAgoMillis(): Long =
@@ -278,6 +306,38 @@ internal fun parseChapters(info: JSONObject): List<Chapter> {
         }
     }
 }
+
+/**
+ * Parses the SponsorBlock promotional segments from the yt-dlp metadata.
+ */
+internal fun parseSponsorSegments(info: JSONObject): List<Segment> {
+    val segments = info.optJSONArray("sponsorblock_chapters") ?: return emptyList()
+    return (0 until segments.length()).mapNotNull { i ->
+        segments.optJSONObject(i)?.let {
+            Segment(
+                (it.optDouble("start_time", 0.0) * 1000).toLong(),
+                (it.optDouble("end_time", 0.0) * 1000).toLong(),
+                it.optString("category"),
+            )
+        }
+    }
+}
+
+/**
+ * Drops the transcript lines whose timestamp falls inside a SponsorBlock segment.
+ * Lines without a timestamp are kept.
+ */
+internal fun removeSponsorSegments(text: String, segments: List<Segment>): String =
+    if (segments.isEmpty()) {
+        text
+    } else {
+        text.lineSequence()
+            .filter { line ->
+                val ms = lineTimeMs(line)
+                segments.none { ms >= it.startMs && ms < it.endMs }
+            }
+            .joinToString("\n")
+    }
 
 /**
  * Inserts chapter markers as `[MM:SS] [Chapitre] <title>` lines at their position in

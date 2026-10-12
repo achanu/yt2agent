@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.TextView
 import android.widget.Toast
 import java.text.SimpleDateFormat
@@ -23,6 +24,8 @@ class ShareActivity : Activity() {
 
     /** Bumped on every new fetch; stale fetches must not touch the UI. */
     private var fetchGeneration = 0
+
+    private val prefs by lazy { getSharedPreferences("yt2agent", MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,6 +48,11 @@ class ShareActivity : Activity() {
             return
         }
         setContentView(R.layout.activity_share)
+        val removeSponsors = findViewById<CheckBox>(R.id.remove_sponsors)
+        removeSponsors.isChecked = prefs.getBoolean(KEY_REMOVE_SPONSORS, false)
+        removeSponsors.setOnCheckedChangeListener { _, checked ->
+            prefs.edit().putBoolean(KEY_REMOVE_SPONSORS, checked).apply()
+        }
         startFetch()
     }
 
@@ -124,6 +132,7 @@ class ShareActivity : Activity() {
                     transcript,
                     getString(R.string.chapters_label),
                     Locale.getDefault(),
+                    prefs.getBoolean(KEY_REMOVE_SPONSORS, false),
                 ),
             )
         }
@@ -154,6 +163,7 @@ internal fun operationStringRes(line: String): Int? = when {
 }
 
 private const val DESCRIPTION_MAX_CHARS = 1000
+private const val KEY_REMOVE_SPONSORS = "remove_sponsors"
 
 /**
  * Caps the description: some are huge walls of links and hashtags and would bloat
@@ -189,6 +199,7 @@ internal fun buildShareText(
     transcript: Transcript,
     chaptersLabel: String,
     locale: Locale,
+    removeSponsors: Boolean,
 ): String = buildString {
     if (transcript.title.isNotEmpty()) appendLine(stripLinkSchemes(transcript.title)).appendLine()
     val infoLine = buildInfoLine(transcript, locale)
@@ -202,7 +213,12 @@ internal fun buildShareText(
         transcript.chapters.forEach { appendLine("[${formatTime(it.timeMs)}] ${it.title}") }
         appendLine()
     }
-    append(transcript.text)
+    val body = if (removeSponsors) {
+        removeSponsorSegments(transcript.text, transcript.sponsorSegments)
+    } else {
+        transcript.text
+    }
+    append(body)
 }
 
 internal fun shortUrl(url: String): String =
