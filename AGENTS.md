@@ -61,9 +61,10 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 - Fetch options are load-bearing against YouTube 429s: `--ignore-errors`,
   `--retries/--retry-sleep`, and `--extractor-args youtube:player_client=android_vr`
   (the library cannot impersonate a browser, so the default client gets blocked).
-- `updateYoutubeDL(STABLE)` runs at most every 72 hours (SharedPreferences timestamp),
-  asynchronously on its own thread; a failed fetch (except "no transcript") forces a
-  redownload and one retry synchronously — `updateBinary()` is synchronized.
+- `updateYoutubeDL(STABLE)` runs at most every 72 hours, AFTER the fetch chain in the
+  fetch thread (it never races an execution and the chooser is already up); a failed
+  fetch (except "no transcript") forces a redownload and one retry — skipped when the
+  binary is less than 12 hours old. `updateBinary()` and `execute` share `ytLock`.
 - Subtitle preference: a single `-orig` track is taken as is (genuine ASR); among
   several — YouTube's multi-language ASR emits many, all marked "Original", and the
   spoken language is undetectable — English wins, then the locale; without `-orig`
@@ -80,7 +81,8 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   indefinitely); any multi-video extraction is capped to its first entry.
 - Cache hits hold the fetch screen for one second so the checkboxes are
   reachable (`MIN_FETCH_DISPLAY_MILLIS`).
-- Fetch failures show `activity_error` (message + Retry button) instead of a toast.
+- Fetch failures show `activity_error` (message + Copy details + Retry + Cancel);
+  "Copy details" puts the full stack trace on the clipboard for bug reports.
 - Day/night: `AppTheme` has a light parent in `values/themes.xml` and a dark one in
   `values-night/themes.xml`; no hardcoded colors in layouts.
 - Progress: yt-dlp output lines flow to the `operation` TextView via the
@@ -104,9 +106,10 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   on the fetch screen persists via SharedPreferences (remove_sponsors, default
   false) and filters at share time — retroactive on cached entries.
 - Cache: chapters ARE cached (JSONArray of {ms, t}).
-- Cache: `cacheDir/transcripts/<md5-of-url>.json`, 7-day TTL; read before init, write
-  after a successful fetch. Negative cache: `missing-<key>.json`, 24-hour TTL, written
-  when a video has no transcript so re-shares fail instantly.
+- Cache: `cacheDir/transcripts/<md5-of-url>.json`, 1-hour TTL (short-term de-dup);
+  read before init, write after a successful fetch. Negative cache: `missing-<key>.json`,
+  24-hour TTL. `pruneCache()` drops expired entries and enforces a 30 MB cap on every
+  write.
 - Error surface is a Toast + `finish()`. Toast text is filtered to the first
   `ERROR` line (`firstErrorLine`), because `YoutubeDLException` messages embed the
   whole yt-dlp stderr including harmless ffmpeg warnings.

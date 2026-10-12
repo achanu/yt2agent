@@ -1,6 +1,8 @@
 package info.chanu.yt2agent
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
@@ -131,6 +133,13 @@ class ShareActivity : Activity() {
     private fun showError(e: Exception) {
         setContentView(R.layout.activity_error)
         findViewById<TextView>(R.id.error_message).text = firstErrorLine(e)
+        findViewById<Button>(R.id.copy_details).setOnClickListener {
+            val clipboard = getSystemService(ClipboardManager::class.java)
+            clipboard.setPrimaryClip(
+                ClipData.newPlainText("yt2agent", Log.getStackTraceString(e)),
+            )
+            Toast.makeText(this, R.string.copied, Toast.LENGTH_SHORT).show()
+        }
         // "No transcript" is permanent for this video; retrying would be pointless.
         findViewById<Button>(R.id.retry).visibility =
             if (e is IllegalStateException) View.GONE else View.VISIBLE

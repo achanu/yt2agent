@@ -15,4 +15,6 @@
     <string name="elapsed">%1$d s</string>
     <string name="remove_sponsors">Quitar segmentos de patrocinio</string>\n    <string name="remove_selfpromo">Quitar autopromoción y llamadas a la acción</string>
     <string name="include_description">Incluir la descripción</string>
+    <string name="copy_details">Copiar detalles</string>
+    <string name="copied">Copiado</string>
 </resources>

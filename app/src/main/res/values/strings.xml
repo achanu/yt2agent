@@ -16,4 +16,6 @@
     <string name="elapsed">%1$d s</string>
     <string name="remove_sponsors">Remove sponsor segments</string>\n    <string name="remove_selfpromo">Remove self-promo and call-to-action segments</string>
     <string name="include_description">Include the description</string>
+    <string name="copy_details">Copy details</string>
+    <string name="copied">Copied</string>
 </resources>

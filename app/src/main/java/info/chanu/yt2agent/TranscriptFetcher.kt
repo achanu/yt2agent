@@ -66,11 +66,6 @@ class TranscriptFetcher(private val context: Context) {
         // Blocking on first call only: unpacks the bundled yt-dlp + python.
         YoutubeDL.getInstance().init(context)
 
-        // The periodic check never blocks the fetch; the ytLock keeps the update
-        // from overlapping an in-flight execution (concurrent python processes
-        // thrash on a flaky network).
-        if (lastUpdateAgoMillis() > UPDATE_TTL_MILLIS) Thread { updateBinary() }.start()
-
         val transcript = try {
             fetchTranscript(videoUrl, onTitle, onStatus)
         } catch (e: IllegalStateException) {
@@ -89,6 +84,11 @@ class TranscriptFetcher(private val context: Context) {
             }
         }
         writeCache(videoUrl, transcript)
+
+        // The periodic check runs AFTER the fetch chain, in this same thread: it
+        // never races an execution, the chooser is already up, and the next share
+        // has a head start before the (rare) update download.
+        if (lastUpdateAgoMillis() > UPDATE_TTL_MILLIS) updateBinary()
         return transcript
     }
 
@@ -188,7 +188,7 @@ class TranscriptFetcher(private val context: Context) {
         )
     }
 
-    // ponytail: 7-day TTL; captions never change, this only bounds cache growth.
+    // ponytail: 1-hour TTL; the cache is a short-term de-dup, not a store.
     private fun readCache(videoUrl: String): Transcript? {
         val file = File(File(context.cacheDir, "transcripts"), "${cacheKey(videoUrl)}.json")
         if (!file.exists() ||
@@ -255,8 +255,35 @@ class TranscriptFetcher(private val context: Context) {
                 .put("sponsorSegments", segments)
                 .toString()
                 .let { File(dir, "${cacheKey(videoUrl)}.json").writeText(it) }
+            pruneCache()
         } catch (e: Exception) {
             // A failed cache write is not fatal.
+        }
+    }
+
+    /** Drops expired entries, then keeps the cache dir under a size cap. */
+    private fun pruneCache() {
+        try {
+            val files = File(context.cacheDir, "transcripts")
+                .listFiles()?.filter { it.isFile } ?: return
+            val now = System.currentTimeMillis()
+            files.filter { file ->
+                val ttl = if (file.name.startsWith("missing")) {
+                    MISSING_TTL_MILLIS
+                } else {
+                    TRANSCRIPT_TTL_MILLIS
+                }
+                now - file.lastModified() > ttl
+            }.forEach { it.delete() }
+
+            var total = files.sumOf { it.length() }
+            for (file in files.sortedBy { it.lastModified() }) {
+                if (total <= CACHE_MAX_BYTES) break
+                total -= file.length()
+                file.delete()
+            }
+        } catch (e: Exception) {
+            // A failed prune is not fatal.
         }
     }
 
@@ -301,8 +328,9 @@ class TranscriptFetcher(private val context: Context) {
         val SUBTITLE_EXTENSIONS = setOf("json3", "vtt", "srt")
         const val UPDATE_TTL_MILLIS = 72L * 60 * 60 * 1000
         const val RECENT_UPDATE_MILLIS = 12L * 60 * 60 * 1000
-        const val TRANSCRIPT_TTL_MILLIS = 7L * 24 * 60 * 60 * 1000
+        const val TRANSCRIPT_TTL_MILLIS = 60L * 60 * 1000
         const val MISSING_TTL_MILLIS = 24L * 60 * 60 * 1000
+        const val CACHE_MAX_BYTES = 30L * 1024 * 1024
         const val KEY_LAST_UPDATE = "yt_dlp_last_update"
     }
 }

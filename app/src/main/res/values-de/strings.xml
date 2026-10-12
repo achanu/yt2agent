@@ -15,4 +15,6 @@
     <string name="elapsed">%1$d s</string>
     <string name="remove_sponsors">Sponsorensegmente entfernen</string>\n    <string name="remove_selfpromo">Eigenwerbung und Handlungsaufrufe entfernen</string>
     <string name="include_description">Beschreibung einbeziehen</string>
+    <string name="copy_details">Details kopieren</string>
+    <string name="copied">Kopiert</string>
 </resources>
