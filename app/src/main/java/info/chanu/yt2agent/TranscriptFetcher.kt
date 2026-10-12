@@ -307,10 +307,16 @@ class TranscriptFetcher(private val context: Context) {
 
         val entries = groups.mapNotNull { (prefix, names) ->
             // Oversized files (a multi-hour entry's word-level auto-captions reach
-            // tens of MB) would OOM the heap: skip the entry, like a caption-less one.
-            val infoName = names.firstOrNull { it.endsWith(".info.json") } ?: return@mapNotNull null
-            if (File(outDir, infoName).length() > MAX_PARSE_BYTES) return@mapNotNull null
-            val info = JSONObject(File(outDir, infoName).readText())
+            // tens of MB) would OOM the heap: the track is skipped, like a caption-less
+            // entry. A multi-ASR entry's info json bloats to tens of MB the same way
+            // (~25k signed caption URLs we never read): it is not parsed either, but
+            // the entry still ships on its caption file, with a thin metadata line.
+            val infoName = names.firstOrNull { it.endsWith(".info.json") }
+            val info = if (infoName != null && File(outDir, infoName).length() <= MAX_PARSE_BYTES) {
+                JSONObject(File(outDir, infoName).readText())
+            } else {
+                JSONObject()
+            }
             val subNames = names
                 .filter { SUBTITLE_EXTENSIONS.contains(it.substringAfterLast('.')) }
                 .filter { File(outDir, it).length() <= MAX_PARSE_BYTES }
@@ -324,7 +330,9 @@ class TranscriptFetcher(private val context: Context) {
             }
             val chapters = parseChapters(info)
             Transcript(
-                title = info.optString("title"),
+                title = info.optString("title").ifEmpty {
+                    subName.substringAfter(" - ").substringBeforeLast(".").substringBeforeLast(".")
+                },
                 description = info.optString("description"),
                 url = info.optString("webpage_url").ifEmpty { playlistUrl },
                 text = insertChapters(captionText, chapters),
