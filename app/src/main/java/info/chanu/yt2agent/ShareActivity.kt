@@ -18,42 +18,64 @@ class ShareActivity : Activity() {
 
     private var videoUrl: String = ""
 
+    /** Bumped on every new fetch; stale fetches must not touch the UI. */
+    private var fetchGeneration = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleSharedText(intent?.getStringExtra(Intent.EXTRA_TEXT))
+    }
 
-        videoUrl = intent?.getStringExtra(Intent.EXTRA_TEXT)?.let(::findSharedUrl) ?: ""
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // A share arriving while this instance is already showing (e.g. on the
+        // error screen) must be handled, not ignored.
+        handleSharedText(intent.getStringExtra(Intent.EXTRA_TEXT))
+    }
+
+    private fun handleSharedText(sharedText: String?) {
+        videoUrl = sharedText?.let(::findSharedUrl) ?: ""
         if (videoUrl.isEmpty()) {
             Toast.makeText(this, R.string.no_youtube_link, Toast.LENGTH_LONG).show()
             finish()
             return
         }
-
         setContentView(R.layout.activity_share)
         startFetch()
     }
 
     private fun startFetch() {
+        val generation = ++fetchGeneration
         Thread {
             try {
                 val transcript = TranscriptFetcher(this).fetch(
                     videoUrl,
                     onTitle = { title ->
-                        runOnUiThread {
-                            findViewById<TextView>(R.id.status).text =
-                                getString(R.string.fetching_named, title)
+                        if (generation == fetchGeneration) {
+                            runOnUiThread {
+                                findViewById<TextView>(R.id.status).text =
+                                    getString(R.string.fetching_named, title)
+                            }
                         }
                     },
                     onStatus = { line ->
-                        runOnUiThread {
-                            findViewById<TextView>(R.id.operation).text =
-                                operationStringRes(line)?.let { getString(it) } ?: line
+                        if (generation == fetchGeneration) {
+                            runOnUiThread {
+                                findViewById<TextView>(R.id.operation).text =
+                                    operationStringRes(line)?.let { getString(it) } ?: line
+                            }
                         }
                     },
                 )
-                runOnUiThread { shareTranscript(transcript) }
+                if (generation == fetchGeneration) {
+                    runOnUiThread { shareTranscript(transcript) }
+                }
             } catch (e: Exception) {
                 Log.e("yt2agent", "transcript fetch failed", e)
-                runOnUiThread { showError(e) }
+                if (generation == fetchGeneration) {
+                    runOnUiThread { showError(e) }
+                }
             }
         }.start()
     }
