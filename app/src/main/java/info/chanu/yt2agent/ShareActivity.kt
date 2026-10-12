@@ -70,6 +70,7 @@ class ShareActivity : Activity() {
 
     private fun startFetch() {
         val generation = ++fetchGeneration
+        val fetchStart = SystemClock.elapsedRealtime()
         val timer = Thread {
             val start = SystemClock.elapsedRealtime()
             try {
@@ -107,6 +108,12 @@ class ShareActivity : Activity() {
                         }
                     },
                 )
+                // Cache hits resolve instantly; keep the screen up long enough
+                // to reach the checkboxes.
+                val elapsed = SystemClock.elapsedRealtime() - fetchStart
+                if (elapsed < MIN_FETCH_DISPLAY_MILLIS) {
+                    Thread.sleep(MIN_FETCH_DISPLAY_MILLIS - elapsed)
+                }
                 if (generation == fetchGeneration) {
                     runOnUiThread { shareTranscript(transcript) }
                 }
@@ -178,6 +185,7 @@ internal fun operationStringRes(line: String): Int? = when {
 
 private const val DESCRIPTION_MAX_CHARS = 1000
 private const val KEY_INCLUDE_DESCRIPTION = "include_description"
+private const val MIN_FETCH_DISPLAY_MILLIS = 1000L
 private const val KEY_REMOVE_SPONSORS = "remove_sponsors"
 private const val KEY_REMOVE_SELF_PROMO = "remove_selfpromo"
 

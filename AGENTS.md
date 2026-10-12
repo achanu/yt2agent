@@ -75,8 +75,11 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   only the tracks the selector can pick (multi-ASR videos expose 16 "-orig" tracks);
   `--retries 3 --retry-sleep 10` keeps 429-storm request counts low; transcripts are
   cached 7 days and no-transcript failures 24 h, so cache hits cost zero requests.
-- `--no-playlist`: one video per share; URLs with a list= parameter fetch only the
-  video, and playlist URLs fail with an explicit error.
+- `--no-playlist` + `--playlist-items 1`: one video per share. Channel URLs
+  enumerate every video otherwise (a channel link used to hang the fetch
+  indefinitely); any multi-video extraction is capped to its first entry.
+- Cache hits hold the fetch screen for one second so the checkboxes are
+  reachable (`MIN_FETCH_DISPLAY_MILLIS`).
 - Fetch failures show `activity_error` (message + Retry button) instead of a toast.
 - Day/night: `AppTheme` has a light parent in `values/themes.xml` and a dark one in
   `values-night/themes.xml`; no hardcoded colors in layouts.

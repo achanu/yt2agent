@@ -36,6 +36,9 @@ class TranscriptFetcher(private val context: Context) {
 
     private val prefs = context.getSharedPreferences("yt2agent", Context.MODE_PRIVATE)
 
+    /** Serializes yt-dlp executions and binary updates: they share one work dir. */
+    private val ytLock = Any()
+
     /**
      * Returns the cached transcript for [videoUrl] when fresh, or fetches it. Blocks;
      * call from a background thread. [onTitle] is invoked on the calling thread as
@@ -63,8 +66,9 @@ class TranscriptFetcher(private val context: Context) {
         // Blocking on first call only: unpacks the bundled yt-dlp + python.
         YoutubeDL.getInstance().init(context)
 
-        // The periodic check never blocks the fetch; a concurrent fetch may still run
-        // on the old binary, and the error path (forced update + retry) recovers that.
+        // The periodic check never blocks the fetch; the ytLock keeps the update
+        // from overlapping an in-flight execution (concurrent python processes
+        // thrash on a flaky network).
         if (lastUpdateAgoMillis() > UPDATE_TTL_MILLIS) Thread { updateBinary() }.start()
 
         val transcript = try {
@@ -78,7 +82,9 @@ class TranscriptFetcher(private val context: Context) {
             try {
                 fetchTranscript(videoUrl, onTitle, onStatus)
             } catch (e2: Exception) {
-                updateBinary()
+                // A recently updated binary is not the suspect; the failure is
+                // network-ish and re-downloading would only add delay.
+                if (lastUpdateAgoMillis() > RECENT_UPDATE_MILLIS) updateBinary()
                 fetchTranscript(videoUrl, onTitle, onStatus)
             }
         }
@@ -119,6 +125,9 @@ class TranscriptFetcher(private val context: Context) {
             // One video per share; a URL carrying a list= parameter fetches only
             // the video, and playlist URLs fail with an explicit error.
             addOption("--no-playlist")
+            // Channel and playlist URLs enumerate every video otherwise; cap any
+            // multi-video extraction to its first entry so the fetch stays bounded.
+            addOption("--playlist-items", "1")
             // YouTube 429s timedtext requests from impersonation-less clients;
             // few retries with a long sleep keeps the request count low.
             addOption("--ignore-errors")
@@ -133,14 +142,16 @@ class TranscriptFetcher(private val context: Context) {
         }
 
         var titleSurfaced = false
-        YoutubeDL.getInstance().execute(request, null) { _, _, line ->
-            val text = line?.trim().orEmpty()
-            if (text.isNotEmpty() && !text.startsWith("WARNING")) {
-                if (!titleSurfaced && text.startsWith(DESTINATION_PREFIX)) {
-                    titleSurfaced = true
-                    onTitle(destinationTitle(text))
+        synchronized(ytLock) {
+            YoutubeDL.getInstance().execute(request, null) { _, _, line ->
+                val text = line?.trim().orEmpty()
+                if (text.isNotEmpty() && !text.startsWith("WARNING")) {
+                    if (!titleSurfaced && text.startsWith(DESTINATION_PREFIX)) {
+                        titleSurfaced = true
+                        onTitle(destinationTitle(text))
+                    }
+                    onStatus(text)
                 }
-                onStatus(text)
             }
         }
 
@@ -276,8 +287,8 @@ class TranscriptFetcher(private val context: Context) {
     private fun lastUpdateAgoMillis(): Long =
         System.currentTimeMillis() - prefs.getLong(KEY_LAST_UPDATE, 0L)
 
-    // Serialized: the periodic background check and the error path can overlap.
-    private fun updateBinary() = synchronized(this) {
+    // Serialized with execute via ytLock: updates and fetches share one work dir.
+    private fun updateBinary() = synchronized(ytLock) {
         try {
             YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel.STABLE)
             prefs.edit().putLong(KEY_LAST_UPDATE, System.currentTimeMillis()).apply()
@@ -289,6 +300,7 @@ class TranscriptFetcher(private val context: Context) {
     private companion object {
         val SUBTITLE_EXTENSIONS = setOf("json3", "vtt", "srt")
         const val UPDATE_TTL_MILLIS = 72L * 60 * 60 * 1000
+        const val RECENT_UPDATE_MILLIS = 12L * 60 * 60 * 1000
         const val TRANSCRIPT_TTL_MILLIS = 7L * 24 * 60 * 60 * 1000
         const val MISSING_TTL_MILLIS = 24L * 60 * 60 * 1000
         const val KEY_LAST_UPDATE = "yt_dlp_last_update"
