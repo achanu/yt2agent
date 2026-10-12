@@ -383,14 +383,16 @@ internal fun findSharedUrl(sharedText: String): String? =
 
 /**
  * Whether [url] points at a YouTube playlist or channel — the multi-transcript
- * path. `watch?v=…&list=…` stays a single video; so does every other site.
+ * path. A watch URL counts only when it carries both `list=` and `index=` (a share
+ * from inside a playlist); `watch?v=…&list=…` without an index stays a single
+ * video, and so does every other site.
  */
 internal fun isPlaylistUrl(url: String): Boolean {
     val noScheme = url.substringAfter("://")
     val host = noScheme.substringBefore('/')
     if (host != "youtube.com" && !host.endsWith(".youtube.com")) return false
     val path = noScheme.substringAfter('/', "")
-    if (path.startsWith("watch")) return false
+    if (path.startsWith("watch")) return "list=" in path && "index=" in path
     return path.startsWith("playlist") ||
         path.startsWith("@") ||
         path.startsWith("channel/") ||

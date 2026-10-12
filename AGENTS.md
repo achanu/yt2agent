@@ -83,7 +83,8 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   enumerate every video otherwise (a channel link used to hang the fetch
   indefinitely); any multi-video extraction is capped to its first entry.
 - Playlist path (`isPlaylistUrl`: `youtube.com/playlist`, `/@handle`, `/channel/`,
-  `/c/`, `/user/`; `watch?v=…&list=…` stays a single video): `--playlist-items 1-30`
+  `/c/`, `/user/`, and `watch?v=…&list=…&index=…` — a share from inside a playlist;
+  `watch?v=…&list=…` without an index stays a single video): `--playlist-items 1-30`
   (`PLAYLIST_MAX`), output template `%(playlist_index)03d - %(title)s` so each video's
   info json and captions group by index prefix. Entries without captions are skipped,
   not fatal. The document is a playlist header plus `[i/N]` blocks (title, info line,

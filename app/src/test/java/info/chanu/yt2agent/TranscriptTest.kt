@@ -301,6 +301,9 @@ class TranscriptTest {
         assertFalse(isPlaylistUrl("https://vimeo.com/22439234"))
         assertFalse(isPlaylistUrl("https://vimeo.com/@somechannel"))
         assertFalse(isPlaylistUrl("https://notyoutube.com/playlist?list=PL1"))
+        // A share from inside a playlist carries both params.
+        assertTrue(isPlaylistUrl("https://www.youtube.com/watch?v=abc&list=PL123&index=5"))
+        assertFalse(isPlaylistUrl("https://www.youtube.com/watch?v=abc&index=5"))
     }
 
     @Test
