@@ -40,12 +40,24 @@
             android:textSize="12sp" />
     </LinearLayout>
 
-    <CheckBox
-        android:id="@+id/remove_sponsors"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
         android:layout_marginBottom="24dp"
-        android:text="@string/remove_sponsors" />
+        android:orientation="vertical">
+
+        <CheckBox
+            android:id="@+id/remove_sponsors"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/remove_sponsors" />
+
+        <CheckBox
+            android:id="@+id/remove_selfpromo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/remove_selfpromo" />
+    </LinearLayout>
 
 </LinearLayout>

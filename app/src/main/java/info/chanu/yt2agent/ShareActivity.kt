@@ -48,12 +48,18 @@ class ShareActivity : Activity() {
             return
         }
         setContentView(R.layout.activity_share)
-        val removeSponsors = findViewById<CheckBox>(R.id.remove_sponsors)
-        removeSponsors.isChecked = prefs.getBoolean(KEY_REMOVE_SPONSORS, false)
-        removeSponsors.setOnCheckedChangeListener { _, checked ->
-            prefs.edit().putBoolean(KEY_REMOVE_SPONSORS, checked).apply()
-        }
+        wireRemovalCheckbox(R.id.remove_sponsors, KEY_REMOVE_SPONSORS)
+        wireRemovalCheckbox(R.id.remove_selfpromo, KEY_REMOVE_SELF_PROMO)
         startFetch()
+    }
+
+    /** Binds a checkbox to its persistent preference. */
+    private fun wireRemovalCheckbox(id: Int, key: String) {
+        val checkbox = findViewById<CheckBox>(id)
+        checkbox.isChecked = prefs.getBoolean(key, false)
+        checkbox.setOnCheckedChangeListener { _, checked ->
+            prefs.edit().putBoolean(key, checked).apply()
+        }
     }
 
     private fun startFetch() {
@@ -133,6 +139,7 @@ class ShareActivity : Activity() {
                     getString(R.string.chapters_label),
                     Locale.getDefault(),
                     prefs.getBoolean(KEY_REMOVE_SPONSORS, false),
+                    prefs.getBoolean(KEY_REMOVE_SELF_PROMO, false),
                 ),
             )
         }
@@ -164,6 +171,7 @@ internal fun operationStringRes(line: String): Int? = when {
 
 private const val DESCRIPTION_MAX_CHARS = 1000
 private const val KEY_REMOVE_SPONSORS = "remove_sponsors"
+private const val KEY_REMOVE_SELF_PROMO = "remove_selfpromo"
 
 /**
  * Caps the description: some are huge walls of links and hashtags and would bloat
@@ -200,6 +208,7 @@ internal fun buildShareText(
     chaptersLabel: String,
     locale: Locale,
     removeSponsors: Boolean,
+    removeSelfPromo: Boolean,
 ): String = buildString {
     if (transcript.title.isNotEmpty()) appendLine(stripLinkSchemes(transcript.title)).appendLine()
     val infoLine = buildInfoLine(transcript, locale)
@@ -213,12 +222,20 @@ internal fun buildShareText(
         transcript.chapters.forEach { appendLine("[${formatTime(it.timeMs)}] ${it.title}") }
         appendLine()
     }
-    val body = if (removeSponsors) {
-        removeSponsorSegments(transcript.text, transcript.sponsorSegments)
-    } else {
-        transcript.text
+    val toRemove = transcript.sponsorSegments.filter {
+        when (it.category) {
+            "sponsor" -> removeSponsors
+            "selfpromo", "interaction" -> removeSelfPromo
+            else -> false
+        }
     }
-    append(body)
+    append(
+        if (toRemove.isEmpty()) {
+            transcript.text
+        } else {
+            removeSponsorSegments(transcript.text, toRemove)
+        },
+    )
 }
 
 internal fun shortUrl(url: String): String =
