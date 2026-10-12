@@ -93,9 +93,11 @@ class TranscriptFetcher(private val context: Context) {
             addOption("--write-subs")
             addOption("--write-auto-subs")
             addOption("--write-info-json")
-            // Original language first: YouTube's auto-translations degrade the text
-            // and agents read any language; device locale and English follow.
-            addOption("--sub-langs", ".*-orig,${Locale.getDefault().language},en")
+            // Only the tracks the selector can pick are downloaded (a multi-ASR
+            // video exposes 16 "-orig" tracks — 15 MB of waste): English and locale
+            // originals, then locale and English. ponytail: a video spoken in a
+            // third language loses its original track and falls back to the locale.
+            addOption("--sub-langs", "en.*-orig,${Locale.getDefault().language}.*-orig,${Locale.getDefault().language},en")
             // Format preference: json3 (YouTube's native), then vtt/srt for sites
             // whose extractors do not expose json3.
             addOption("--sub-format", "json3/vtt/srt")
@@ -103,10 +105,11 @@ class TranscriptFetcher(private val context: Context) {
             // One video per share; a URL carrying a list= parameter fetches only
             // the video, and playlist URLs fail with an explicit error.
             addOption("--no-playlist")
-            // YouTube 429s timedtext requests from impersonation-less clients.
+            // YouTube 429s timedtext requests from impersonation-less clients;
+            // few retries with a long sleep keeps the request count low.
             addOption("--ignore-errors")
-            addOption("--retries", "5")
-            addOption("--retry-sleep", "5")
+            addOption("--retries", "3")
+            addOption("--retry-sleep", "10")
             addOption("--extractor-args", "youtube:player_client=android_vr")
         }
 

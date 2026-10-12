@@ -71,6 +71,10 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 - Caption formats: json3 preferred, then vtt/srt (`--sub-format "json3/vtt/srt"`);
   `parseVttOrSrt` handles both (shared cue-block shape). Non-YouTube sites without
   json3 work through vtt/srt.
+- Network frugality: `--sub-langs "en.*-orig,<locale>.*-orig,<locale>,en"` downloads
+  only the tracks the selector can pick (multi-ASR videos expose 16 "-orig" tracks);
+  `--retries 3 --retry-sleep 10` keeps 429-storm request counts low; transcripts are
+  cached 7 days and no-transcript failures 24 h, so cache hits cost zero requests.
 - `--no-playlist`: one video per share; URLs with a list= parameter fetch only the
   video, and playlist URLs fail with an explicit error.
 - Fetch failures show `activity_error` (message + Retry button) instead of a toast.
