@@ -185,23 +185,33 @@ class TranscriptTest {
     }
 
     @Test
-    fun picksDeviceLocaleFirst() {
-        assertEquals(
-            "sub.fr.json3",
-            pickSubtitle(listOf("sub.en.json3", "sub.es-orig.json3", "sub.fr.json3"), "fr"),
-        )
-        // Within the locale, the original track wins over the translated one.
+    fun prefersLocaleOrigTrackWhenItExists() {
+        // A French video mislabeled as English by its creator: fr-orig is the real ASR.
         assertEquals(
             "sub.fr-orig.json3",
-            pickSubtitle(listOf("sub.fr.json3", "sub.fr-orig.json3"), "fr"),
+            pickSubtitle(listOf("sub.en-orig.json3", "sub.fr-orig.json3", "sub.fr.json3"), "fr"),
         )
     }
 
     @Test
-    fun fallsBackToOriginalTrackWhenLocaleMissing() {
+    fun prefersAnyOrigTrackOverTranslatedLocale() {
+        // An English video on a French phone: en-orig is the real ASR,
+        // sub.fr.json3 is a machine translation of it.
         assertEquals(
             "sub.en-orig.json3",
-            pickSubtitle(listOf("sub.en-orig.json3", "sub.en.json3"), "fr"),
+            pickSubtitle(listOf("sub.en-orig.json3", "sub.fr.json3", "sub.en.json3"), "fr"),
+        )
+        assertEquals(
+            "sub.es-orig.json3",
+            pickSubtitle(listOf("sub.en.json3", "sub.es-orig.json3", "sub.fr.json3"), "fr"),
+        )
+    }
+
+    @Test
+    fun fallsBackToLocaleWhenNoOrigTrack() {
+        assertEquals(
+            "sub.fr.json3",
+            pickSubtitle(listOf("sub.en.json3", "sub.fr.json3"), "fr"),
         )
     }
 

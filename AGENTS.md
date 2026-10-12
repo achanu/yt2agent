@@ -64,10 +64,10 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 - `updateYoutubeDL(STABLE)` runs at most every 72 hours (SharedPreferences timestamp),
   asynchronously on its own thread; a failed fetch (except "no transcript") forces a
   redownload and one retry synchronously — `updateBinary()` is synchronized.
-- Subtitle preference order: device locale (its `-orig` track when present),
-  fallback original track, then English. Creators mislabel video languages, so
-  `-orig` alone is not trustworthy; `pickSubtitle` logs the available files and
-  the one it picks.
+- Subtitle preference order: `<locale>-orig`, then any `-orig` track (the real ASR
+  whatever the language — YouTube's machine translations degrade the text), then the
+  locale, then English. `-orig` tracks stay genuine even when creators mislabel the
+  video language; `pickSubtitle` logs the available files and the one it picks.
 - Fetch failures show `activity_error` (message + Retry button) instead of a toast.
 - Day/night: `AppTheme` has a light parent in `values/themes.xml` and a dark one in
   `values-night/themes.xml`; no hardcoded colors in layouts.

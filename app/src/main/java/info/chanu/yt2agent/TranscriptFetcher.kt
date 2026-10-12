@@ -192,9 +192,9 @@ class TranscriptFetcher(private val context: Context) {
         File(File(context.cacheDir, "transcripts"), "missing-${cacheKey(videoUrl)}.json")
 
     private fun cacheKey(videoUrl: String): String =
-        // The v2- prefix invalidates entries written with a different subtitle
+        // The v3- prefix invalidates entries written with a different subtitle
         // preference order (they hold the wrong language).
-        "v2-" + MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
+        "v3-" + MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
             .joinToString("") { "%02x".format(it) }
 
     private fun lastUpdateAgoMillis(): Long =
@@ -273,16 +273,16 @@ internal fun destinationTitle(line: String): String =
         .substringBeforeLast(".")
 
 /**
- * Picks the subtitle file by preference: device locale, original-language track
- * (`-orig`, unreliable when creators mislabel the video language), English.
- * Within a language the original track wins over the machine-translated one.
+ * Picks the subtitle file by preference: the `-orig` track of the device locale, any
+ * other `-orig` track (the real ASR, whatever the language — YouTube's translations
+ * degrade it), then the locale, then English. `-orig` tracks are genuine ASR even
+ * when creators mislabel the video language; translated tracks are not.
  * The name list is never empty when called.
  */
 internal fun pickSubtitle(names: List<String>, locale: String): String? {
     if (names.isEmpty()) return null
-    for (pref in listOf(locale, "-orig", "en")) {
-        val matches = names.filter { it.contains(pref, ignoreCase = true) }
-        (matches.firstOrNull { it.contains("-orig") } ?: matches.firstOrNull())?.let { return it }
+    for (pref in listOf("$locale-orig", "-orig", locale, "en")) {
+        names.firstOrNull { it.contains(pref, ignoreCase = true) }?.let { return it }
     }
     return names.first()
 }
