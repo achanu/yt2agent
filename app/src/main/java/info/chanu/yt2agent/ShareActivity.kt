@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -59,10 +60,14 @@ class ShareActivity : Activity() {
     private fun showError(e: Exception) {
         setContentView(R.layout.activity_error)
         findViewById<TextView>(R.id.error_message).text = firstErrorLine(e)
+        // "No transcript" is permanent for this video; retrying would be pointless.
+        findViewById<Button>(R.id.retry).visibility =
+            if (e is IllegalStateException) View.GONE else View.VISIBLE
         findViewById<Button>(R.id.retry).setOnClickListener {
             setContentView(R.layout.activity_share)
             startFetch()
         }
+        findViewById<Button>(R.id.cancel).setOnClickListener { finish() }
     }
 
     private fun shareTranscript(transcript: Transcript) {

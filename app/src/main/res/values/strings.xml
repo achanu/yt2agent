@@ -7,4 +7,5 @@
     <string name="no_transcript">No transcript available for this video</string>
     <string name="fetch_failed">Could not fetch transcript: %1$s</string>
     <string name="retry">Retry</string>
+    <string name="cancel">Cancel</string>
 </resources>
