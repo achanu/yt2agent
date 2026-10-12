@@ -52,7 +52,9 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 - Pure logic (parsing, regexes) goes in top-level `internal` functions so it is unit
   testable without Android.
 - `YoutubeDL.init()` and `execute()` are blocking; call them only from a background
-  thread. The title poller thread surfaces the title as soon as `sub.info.json` lands.
+  thread. yt-dlp writes the info file at the END of the run, so the early display
+  title comes from the first `[download] Destination:` line (the output template
+  embeds the title); `destinationTitle` strips the directory and extensions.
 - One yt-dlp run per fetch: metadata and subtitles come from the same
   `--write-info-json` + `--write-subs` invocation. Do not reintroduce a second
   extraction pass (it doubles YouTube API pressure and 429 risk).
