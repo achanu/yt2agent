@@ -190,12 +190,8 @@ class TranscriptFetcher(private val context: Context) {
             }
         }
 
-        val infoFile = outDir.listFiles()?.firstOrNull { it.name.endsWith(".info.json") }
-        val info = if (infoFile != null && infoFile.length() <= MAX_PARSE_BYTES) {
-            JSONObject(infoFile.readText())
-        } else {
-            JSONObject()
-        }
+        val infoFile = outDir.listFiles()?.firstOrNull { it.name.endsWith(INFO_JSON_SUFFIX) }
+        val info = readInfoJson(infoFile)
         val chapters = parseChapters(info)
         val sponsorSegments = parseSponsorSegments(info)
 
@@ -210,11 +206,7 @@ class TranscriptFetcher(private val context: Context) {
             "subs available: ${subFiles.map { it.name }}, picked: $subName, sponsor segments: ${sponsorSegments.size}",
         )
 
-        val subFile = File(outDir, subName)
-        val captionText = when (subFile.extension) {
-            "vtt", "srt" -> parseVttOrSrt(subFile.readText())
-            else -> parseJson3(subFile.readText())
-        }
+        val captionText = parseCaptionFile(File(outDir, subName))
 
         return Transcript(
             title = info.optString("title"),
@@ -301,6 +293,12 @@ class TranscriptFetcher(private val context: Context) {
         }
     }
 
+    /** The info json parsed, or an empty object when absent or past MAX_PARSE_BYTES. */
+    private fun readInfoJson(file: File?): JSONObject = when {
+        file == null || file.length() > MAX_PARSE_BYTES -> JSONObject()
+        else -> JSONObject(file.readText())
+    }
+
     /**
      * Parses the files yt-dlp left in [outDir] into a playlist, one info json at a
      * time. [PlaylistTranscript.complete] compares the info json count (plus the
@@ -314,11 +312,11 @@ class TranscriptFetcher(private val context: Context) {
     ): PlaylistTranscript {
         val files = outDir.listFiles().orEmpty()
         val groups = files.map { it.name }.groupBy { it.substringBefore(" - ") }
-        val infoCount = files.count { it.name.endsWith(".info.json") }
+        val infoCount = files.count { it.name.endsWith(INFO_JSON_SUFFIX) }
         val firstInfoFile = files.firstOrNull {
-            it.name.endsWith(".info.json") && it.length() <= MAX_PARSE_BYTES
+            it.name.endsWith(INFO_JSON_SUFFIX) && it.length() <= MAX_PARSE_BYTES
         }
-        val firstInfo = if (firstInfoFile != null) JSONObject(firstInfoFile.readText()) else JSONObject()
+        val firstInfo = readInfoJson(firstInfoFile)
         val infoTotal = firstInfo.optInt("playlist_count", firstInfo.optInt("n_entries", 0))
         val playlistTitle = firstInfo.optString("playlist_title")
             .ifEmpty { firstInfo.optString("playlist") }
@@ -330,23 +328,15 @@ class TranscriptFetcher(private val context: Context) {
             // entry. A multi-ASR entry's info json bloats to tens of MB the same way
             // (~25k signed caption URLs we never read): it is not parsed either, but
             // the entry still ships on its caption file, with a thin metadata line.
-            val infoName = names.firstOrNull { it.endsWith(".info.json") }
-            val info = if (infoName != null && File(outDir, infoName).length() <= MAX_PARSE_BYTES) {
-                JSONObject(File(outDir, infoName).readText())
-            } else {
-                JSONObject()
-            }
+            val infoName = names.firstOrNull { it.endsWith(INFO_JSON_SUFFIX) }
+            val info = readInfoJson(infoName?.let { File(outDir, it) })
             val subNames = names
                 .filter { SUBTITLE_EXTENSIONS.contains(it.substringAfterLast('.')) }
                 .filter { File(outDir, it).length() <= MAX_PARSE_BYTES }
             val subName = pickSubtitle(subNames, Locale.getDefault().language)
                 ?: return@mapNotNull null
             Log.i("yt2agent", "playlist entry $prefix subs: $subNames, picked: $subName")
-            val subFile = File(outDir, subName)
-            val captionText = when (subFile.extension) {
-                "vtt", "srt" -> parseVttOrSrt(subFile.readText())
-                else -> parseJson3(subFile.readText())
-            }
+            val captionText = parseCaptionFile(File(outDir, subName))
             val chapters = parseChapters(info)
             Transcript(
                 title = info.optString("title").ifEmpty {
@@ -445,29 +435,17 @@ class TranscriptFetcher(private val context: Context) {
         description = json.optString("description"),
         url = json.optString("url"),
         text = json.optString("text"),
-        chapters = readChapters(json.optJSONArray("chapters")),
+        chapters = json.optJSONArray("chapters").mapObjects {
+            Chapter(it.optLong("ms"), it.optString("t"))
+        },
         channel = json.optString("channel"),
         durationSeconds = json.optLong("duration"),
         uploadDate = json.optString("uploadDate"),
-        sponsorSegments = readSegments(json.optJSONArray("sponsorSegments")),
+        sponsorSegments = json.optJSONArray("sponsorSegments").mapObjects {
+            Segment(it.optLong("s"), it.optLong("e"), it.optString("c"))
+        },
         playlistIndex = json.optInt("playlistIndex", 0),
     )
-
-    private fun readChapters(array: JSONArray?): List<Chapter> {
-        if (array == null) return emptyList()
-        return (0 until array.length()).mapNotNull { i ->
-            array.optJSONObject(i)?.let { Chapter(it.optLong("ms"), it.optString("t")) }
-        }
-    }
-
-    private fun readSegments(array: JSONArray?): List<Segment> {
-        if (array == null) return emptyList()
-        return (0 until array.length()).mapNotNull { i ->
-            array.optJSONObject(i)?.let {
-                Segment(it.optLong("s"), it.optLong("e"), it.optString("c"))
-            }
-        }
-    }
 
     private fun writeCache(videoUrl: String, transcript: Transcript) {
         writeTranscriptFile("${cacheKey(videoUrl)}.json", transcriptToJson(transcript))
@@ -561,7 +539,7 @@ class TranscriptFetcher(private val context: Context) {
     private fun cacheKey(videoUrl: String): String =
         // The v7- prefix invalidates entries written before the playlist path
         // (and its playlistIndex field) existed.
-        "v7-" + MessageDigest.getInstance("MD5").digest(videoUrl.toByteArray())
+        "v7-" + MessageDigest.getInstance("SHA-256").digest(videoUrl.toByteArray())
             .joinToString("") { "%02x".format(it) }
 
     private fun lastUpdateAgoMillis(): Long =
@@ -578,7 +556,7 @@ class TranscriptFetcher(private val context: Context) {
     }
 
     private companion object {
-        val SUBTITLE_EXTENSIONS = setOf("json3", "vtt", "srt")
+        const val INFO_JSON_SUFFIX = ".info.json"
         const val SESSION_FILE = "session.txt"
         // ponytail: 10 MB ≈ many hours of word-level captions; bigger files are
         // skipped — reading one into the heap OOMs (org.json needs the whole string).
@@ -592,17 +570,19 @@ class TranscriptFetcher(private val context: Context) {
     }
 }
 
+/** Maps each object of [array] through [mapper]; a null array or entry is skipped. */
+internal fun <T> JSONArray?.mapObjects(mapper: (JSONObject) -> T): List<T> {
+    if (this == null) return emptyList()
+    return (0 until length()).mapNotNull { i -> optJSONObject(i)?.let(mapper) }
+}
+
 /**
  * Parses the chapter markers from the yt-dlp metadata.
  */
-internal fun parseChapters(info: JSONObject): List<Chapter> {
-    val chapters = info.optJSONArray("chapters") ?: return emptyList()
-    return (0 until chapters.length()).mapNotNull { i ->
-        chapters.optJSONObject(i)?.let {
-            Chapter((it.optDouble("start_time", 0.0) * 1000).toLong(), it.optString("title"))
-        }
+internal fun parseChapters(info: JSONObject): List<Chapter> =
+    info.optJSONArray("chapters").mapObjects {
+        Chapter((it.optDouble("start_time", 0.0) * 1000).toLong(), it.optString("title"))
     }
-}
 
 /**
  * Parses the SponsorBlock promotional segments from the yt-dlp metadata.
@@ -676,7 +656,8 @@ private const val DESTINATION_PREFIX = "[download] Destination: "
 private val deadVideoRegex =
     Regex("""\[youtube\] ([\w-]{11}): .*(unavailable|Private video|terminated|members-only)""")
 
-private val subtitleExtensionRegex = Regex("""\.(json3|vtt|srt)$""")
+private val SUBTITLE_EXTENSIONS = setOf("json3", "vtt", "srt")
+private val subtitleExtensionRegex = Regex("""\.(${SUBTITLE_EXTENSIONS.joinToString("|")})$""")
 private val languageCodeRegex = Regex("""\.[a-z]{2}(-[A-Za-z0-9]{2,8})?(-orig)?$""")
 
 /**
@@ -713,6 +694,12 @@ internal fun pickSubtitle(names: List<String>, locale: String): String? {
         names.firstOrNull { it.contains(pref, ignoreCase = true) }?.let { return it }
     }
     return names.first()
+}
+
+/** Parses a caption file by extension: json3 preferred, vtt/srt share the cue-block shape. */
+internal fun parseCaptionFile(file: File): String = when (file.extension) {
+    "vtt", "srt" -> parseVttOrSrt(file.readText())
+    else -> parseJson3(file.readText())
 }
 
 private val cueTimeRegex = Regex("""(?:(\d{1,2}):)?(\d{2}):(\d{2})[.,]\d{1,3}""")

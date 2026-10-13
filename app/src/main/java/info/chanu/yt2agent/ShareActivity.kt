@@ -87,63 +87,70 @@ class ShareActivity : Activity() {
     private fun startFetch() {
         val generation = ++fetchGeneration
         val fetchStart = SystemClock.elapsedRealtime()
-        val timer = Thread {
-            val start = SystemClock.elapsedRealtime()
-            try {
-                while (generation == fetchGeneration) {
-                    val seconds = (SystemClock.elapsedRealtime() - start) / 1000
-                    runOnUiThread {
-                        findViewById<TextView>(R.id.elapsed).text =
-                            getString(R.string.elapsed, seconds)
-                    }
-                    Thread.sleep(1000)
-                }
-            } catch (e: InterruptedException) {
-                // The fetch ended; stop ticking.
-            }
-        }
+        val timer = elapsedTimer(generation)
         timer.start()
         val onTitle = { title: String ->
-            if (generation == fetchGeneration) {
-                runOnUiThread {
-                    findViewById<TextView>(R.id.status).text =
-                        getString(R.string.fetching_named, title)
-                }
+            ifCurrent(generation) {
+                findViewById<TextView>(R.id.status).text =
+                    getString(R.string.fetching_named, title)
             }
         }
         val onStatus = { line: String ->
-            if (generation == fetchGeneration) {
-                runOnUiThread {
-                    findViewById<TextView>(R.id.operation).text =
-                        operationStringRes(line)?.let { getString(it) } ?: line
-                }
+            ifCurrent(generation) {
+                findViewById<TextView>(R.id.operation).text =
+                    operationStringRes(line)?.let { getString(it) } ?: line
             }
         }
         Thread {
             try {
-                val fetcher = TranscriptFetcher(this)
-                if (isPlaylistUrl(videoUrl)) {
-                    val playlist = fetcher.fetchPlaylist(videoUrl, onTitle, onStatus)
-                    holdFetchScreen(fetchStart)
-                    if (generation == fetchGeneration) {
-                        runOnUiThread { sharePlaylist(playlist) }
-                    }
-                } else {
-                    val transcript = fetcher.fetch(videoUrl, onTitle, onStatus)
-                    holdFetchScreen(fetchStart)
-                    if (generation == fetchGeneration) {
-                        runOnUiThread { shareTranscript(transcript) }
-                    }
-                }
+                fetchAndShare(generation, fetchStart, onTitle, onStatus)
             } catch (e: Exception) {
                 Log.e("yt2agent", "transcript fetch failed", e)
-                if (generation == fetchGeneration) {
-                    runOnUiThread { showError(e) }
-                }
+                ifCurrent(generation) { showError(e) }
             } finally {
                 timer.interrupt()
             }
         }.start()
+    }
+
+    /** Runs [action] on the UI thread only when [generation] is still the current fetch. */
+    private fun ifCurrent(generation: Int, action: () -> Unit) {
+        if (generation == fetchGeneration) runOnUiThread { action() }
+    }
+
+    /** Ticks the elapsed timer until [generation] is superseded by a newer fetch. */
+    private fun elapsedTimer(generation: Int): Thread = Thread {
+        val start = SystemClock.elapsedRealtime()
+        try {
+            while (generation == fetchGeneration) {
+                val seconds = (SystemClock.elapsedRealtime() - start) / 1000
+                runOnUiThread {
+                    findViewById<TextView>(R.id.elapsed).text = getString(R.string.elapsed, seconds)
+                }
+                Thread.sleep(1000)
+            }
+        } catch (e: InterruptedException) {
+            // The fetch ended; stop ticking.
+        }
+    }
+
+    /** Fetches on this thread, then shares on the UI thread. */
+    private fun fetchAndShare(
+        generation: Int,
+        fetchStart: Long,
+        onTitle: (String) -> Unit,
+        onStatus: (String) -> Unit,
+    ) {
+        val fetcher = TranscriptFetcher(this)
+        if (isPlaylistUrl(videoUrl)) {
+            val playlist = fetcher.fetchPlaylist(videoUrl, onTitle, onStatus)
+            holdFetchScreen(fetchStart)
+            ifCurrent(generation) { sharePlaylist(playlist) }
+        } else {
+            val transcript = fetcher.fetch(videoUrl, onTitle, onStatus)
+            holdFetchScreen(fetchStart)
+            ifCurrent(generation) { shareTranscript(transcript) }
+        }
     }
 
     /** Cache hits resolve instantly; keep the screen up long enough to reach the checkboxes. */
