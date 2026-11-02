@@ -386,6 +386,10 @@ class TranscriptFetcher(private val context: Context) {
         addOption("--retry-sleep", "10")
         // The recurring ffmpeg-location and po_token warnings only add pipe noise.
         addOption("--no-warnings")
+        // The n/sig JS challenge is now solved per video on every fetch; solving it
+        // only mends googlevideo URLs this app never reads (--skip-download; captions
+        // come from timedtext). Drop challenge-bearing formats instead. See AGENTS.md.
+        addOption("--extractor-args", "youtube:player_skip=js")
         // SponsorBlock promotional segments; only the requested categories
         // land in sponsorblock_chapters (verified: the mark list filters).
         addOption("--sponsorblock-mark", "sponsor,selfpromo,interaction")

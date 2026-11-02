@@ -65,6 +65,12 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   runtime the defaults extract through visionos, and the 72 h binary update keeps the
   client set current. A fresh install on a stale bundled binary self-heals: the failed
   fetch chain forces an update and attempt 3 runs with the new defaults.
+- `--extractor-args "youtube:player_skip=js"`: the n/sig JS challenge is solved per
+  video and has become systematic (2026.08.19: even visionos's HLS manifests carry
+  the n parameter); solving it only produces googlevideo URLs the app never reads
+  (--skip-download, captions come from timedtext). Challenge-bearing formats are
+  dropped instead of solved — measured locally: -38% wall time, identical metadata
+  and subtitle files; the fetch no longer depends on a JS runtime.
 - `updateYoutubeDL(STABLE)` runs at most every 72 hours, AFTER the fetch chain in the
   fetch thread (it never races an execution and the chooser is already up); a failed
   fetch (except "no transcript") forces a redownload and one retry — skipped when the
