@@ -174,6 +174,15 @@ transcripts with copy and share buttons; it never fetches.
 - Do not trim text inside `aAppend` continuation events: the leading space is
   significant in auto-captions.
 
+## Review process
+
+- Load the `/kotlin` (Android Kotlin style guide) skill before writing or
+  reviewing code; it is not restated here.
+- Run a `/ponytail-review` pass over the diff before every commit:
+  over-engineering only — no one-implementation abstractions, stdlib first,
+  deletion over addition. Mark deliberate shortcuts with a `ponytail:` comment
+  naming the ceiling.
+
 ## Build and test
 
 ```
@@ -182,6 +191,37 @@ JAVA_HOME=$HOME/Documents/tools/jdk25 ./gradlew :app:testDebugUnitTest :app:asse
 
 If dependency resolution hangs (dead sockets to dl.google.com), re-run with
 `-Dorg.gradle.internal.http.socketTimeout=30000 -Dorg.gradle.internal.http.connectionTimeout=30000`.
+
+## Releases
+
+- Strict semver (minor = features, patch = fixes); `versionCode` +1 per release;
+  three APKs per ABI (arm64, armeabi-v7a, universal); release notes in English;
+  one release per tag; validate on the device before publishing.
+- Keep the signed APKs in a dedicated stock directory outside the repo
+  (`<releases-dir>/<version>/`), NOT in `app/build/outputs/`: AGP purges that
+  directory of unexpected files — APKs stored there were deleted by a build and
+  had to be rebuilt from the tag.
+- Upload the assets after tagging:
+  `gh release upload v<version> <releases-dir>/v<version>/*.apk --clobber`.
+
+## Rejected by the user — do not re-propose
+
+- Truncating long transcripts.
+- Downloading yt-dlp post-install (it ships bundled; the 72 h update covers it).
+- Clickable per-timecode links (destination agent apps link-sniff and would
+  discard the rest of the text).
+
+## Rejected after analysis — do not re-analyze
+
+- Tightening `--sub-langs`: every pattern in the selector is load-bearing
+  (`en-GB-orig` exists, `${locale},${en}` catch manual subtitles without
+  `-orig`, and the downloaded multi-ASR tracks all serve as pick candidates);
+  tightening loses real videos. The real lever would be picking before
+  downloading, which needs a second yt-dlp pass — forbidden by convention.
+- The library's output accumulation: a real run's output is the visible lines
+  (tens of KB); the 2026-10-12 OOM came from `readText` + the org.json tree
+  (both fixed), not the StringWriter. Revisit only if a run produces megabytes
+  of output.
 
 ## Known ceilings
 
