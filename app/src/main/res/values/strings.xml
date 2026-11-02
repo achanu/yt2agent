@@ -14,10 +14,42 @@
     <string name="op_downloading">Downloading subtitles…</string>
     <string name="op_writing">Writing files…</string>
     <string name="elapsed">%1$d s</string>
-    <string name="remove_sponsors">Remove sponsor segments</string>\n    <string name="remove_selfpromo">Remove self-promo and call-to-action segments</string>
+    <string name="remove_sponsors">Remove sponsor segments</string>
+    <string name="remove_selfpromo">Remove self-promo and call-to-action segments</string>
     <string name="include_description">Include the description</string>
     <string name="copy_details">Copy details</string>
     <string name="copied">Copied</string>
     <string name="share_as_file">Share as file</string>
     <string name="playlist_videos">%1$d videos</string>
+    <string name="config">Configuration</string>
+    <string name="copy">Copy</string>
+    <string name="delete">Delete</string>
+    <string name="preprompt">Add a pre-prompt</string>
+    <string name="preprompt_hint">Text prepended to the transcript (500 characters max)</string>
+    <string name="delete_confirm">Delete this transcript from the cache?</string>
+    <string name="share">Share</string>
+    <string name="no_cached_transcripts">No cached transcripts</string>
+    <string name="cache_ttl_label">Transcript cache duration</string>
+    <string-array name="ttl_labels">
+        <item>1 h</item>
+        <item>3 h</item>
+        <item>6 h</item>
+        <item>12 h</item>
+        <item>1 d</item>
+        <item>3 d</item>
+        <item>7 d</item>
+    </string-array>
+    <integer-array name="ttl_hours">
+        <item>1</item>
+        <item>3</item>
+        <item>6</item>
+        <item>12</item>
+        <item>24</item>
+        <item>72</item>
+        <item>168</item>
+    </integer-array>
+    <string name="yt_dlp_version">yt-dlp version: %1$s</string>
+    <string name="yt_dlp_version_loading">yt-dlp version: loading…</string>
+    <string name="app_version">yt2agent version: %1$s</string>
+    <string name="unknown">unknown</string>
 </resources>

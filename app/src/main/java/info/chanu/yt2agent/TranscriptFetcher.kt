@@ -35,6 +35,7 @@ data class PlaylistTranscript(
     val title: String,
     val total: Int,
     val entries: List<Transcript>,
+    val url: String = "",
     /** False when some entries failed to fetch (network), so the result is not cached. */
     val complete: Boolean = true,
 )
@@ -42,12 +43,26 @@ data class PlaylistTranscript(
 /** The playlist fetch cap: one document covers at most this many videos. */
 internal const val PLAYLIST_MAX = 30
 
+// The transcript TTL is a user preference (main-screen dropdown, default 1 d);
+// the no-transcript negative cache stays fixed: the video will not grow captions
+// by retrying sooner.
+internal const val DEFAULT_TTL_HOURS = 24
+
+/** A cache entry: one video, or a whole playlist document. */
+sealed interface CachedTranscript {
+    data class Video(val transcript: Transcript) : CachedTranscript
+    data class Playlist(val playlist: PlaylistTranscript) : CachedTranscript
+}
+
+/** A cached entry on disk, paired with its parsed content. */
+data class CachedEntry(val file: File, val content: CachedTranscript)
+
 /**
  * Downloads a video transcript with yt-dlp and flattens it to plain text.
  */
 class TranscriptFetcher(private val context: Context) {
 
-    private val prefs = context.getSharedPreferences("yt2agent", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     /** Serializes yt-dlp executions and binary updates: they share one work dir. */
     private val ytLock = Any()
@@ -239,7 +254,7 @@ class TranscriptFetcher(private val context: Context) {
         val session = File(outDir, SESSION_FILE)
         val resumable = session.exists() &&
             runCatching { session.readText() }.getOrNull() == playlistUrl &&
-            System.currentTimeMillis() - session.lastModified() < TRANSCRIPT_TTL_MILLIS
+            System.currentTimeMillis() - session.lastModified() < SESSION_MAX_AGE_MILLIS
         if (!resumable) {
             outDir.listFiles()?.forEach { it.delete() }
             session.writeText(playlistUrl)
@@ -357,6 +372,7 @@ class TranscriptFetcher(private val context: Context) {
             title = playlistTitle,
             total = if (infoTotal > 0) infoTotal else entries.size,
             entries = entries,
+            url = playlistUrl,
             complete = infoTotal <= 0 ||
                 infoCount + deadIds.size >= minOf(infoTotal, PLAYLIST_MAX),
         )
@@ -399,14 +415,18 @@ class TranscriptFetcher(private val context: Context) {
         // bundled binary self-heals via the forced update in the retry chain.
     }
 
-    // ponytail: 1-hour TTL; the cache is a short-term de-dup, not a store.
+    // The cache TTL is the main-screen dropdown preference; 1 day by default.
+    private fun ttlMillis(): Long =
+        prefs.getInt(KEY_TTL_HOURS, DEFAULT_TTL_HOURS) * 3_600_000L
+
+    // The cache is a short-term de-dup, not a store.
     private fun readCache(videoUrl: String): Transcript? =
         readTranscriptFile("${cacheKey(videoUrl)}.json")?.let { jsonToTranscript(it) }
 
     private fun readTranscriptFile(name: String): JSONObject? {
         val file = File(File(context.cacheDir, "transcripts"), name)
         if (!file.exists() ||
-            System.currentTimeMillis() - file.lastModified() > TRANSCRIPT_TTL_MILLIS
+            System.currentTimeMillis() - file.lastModified() > ttlMillis()
         ) {
             return null
         }
@@ -421,18 +441,47 @@ class TranscriptFetcher(private val context: Context) {
     private fun readPlaylistCache(playlistUrl: String): PlaylistTranscript? {
         val json = readTranscriptFile("${cacheKey(playlistUrl)}.json") ?: return null
         return try {
-            val entries = json.optJSONArray("entries")
-            PlaylistTranscript(
-                title = json.optString("title"),
-                total = json.optInt("total"),
-                entries = (0 until (entries?.length() ?: 0)).mapNotNull {
-                    entries?.optJSONObject(it)?.let(::jsonToTranscript)
-                },
-            )
+            playlistFromJson(json)
         } catch (e: Exception) {
             null
         }
     }
+
+    private fun playlistFromJson(json: JSONObject): PlaylistTranscript {
+        val entries = json.optJSONArray("entries")
+        return PlaylistTranscript(
+            title = json.optString("title"),
+            total = json.optInt("total"),
+            url = json.optString("url"),
+            entries = (0 until (entries?.length() ?: 0)).mapNotNull {
+                entries?.optJSONObject(it)?.let(::jsonToTranscript)
+            },
+        )
+    }
+
+    /**
+     * Lists the fresh cache entries, most recent first, for the main screen.
+     * Blocks (reads and parses every file); call from a background thread.
+     */
+    fun cachedTranscripts(): List<CachedEntry> {
+        val files = File(context.cacheDir, "transcripts")
+            .listFiles()?.filter { it.isFile && !it.name.startsWith("missing") }
+            ?: return emptyList()
+        return files.sortedByDescending { it.lastModified() }.mapNotNull { file ->
+            readTranscriptFile(file.name)?.let { json ->
+                runCatching {
+                    CachedEntry(file, cachedFromJson(json))
+                }.getOrNull()
+            }
+        }
+    }
+
+    private fun cachedFromJson(json: JSONObject): CachedTranscript =
+        if (json.has("entries")) {
+            CachedTranscript.Playlist(playlistFromJson(json))
+        } else {
+            CachedTranscript.Video(jsonToTranscript(json))
+        }
 
     private fun jsonToTranscript(json: JSONObject): Transcript = Transcript(
         title = json.optString("title"),
@@ -462,6 +511,7 @@ class TranscriptFetcher(private val context: Context) {
             JSONObject()
                 .put("title", playlist.title)
                 .put("total", playlist.total)
+                .put("url", playlistUrl)
                 .put("entries", entries),
         )
     }
@@ -506,7 +556,7 @@ class TranscriptFetcher(private val context: Context) {
                 val ttl = if (file.name.startsWith("missing")) {
                     MISSING_TTL_MILLIS
                 } else {
-                    TRANSCRIPT_TTL_MILLIS
+                    ttlMillis()
                 }
                 now - file.lastModified() > ttl
             }.forEach { it.delete() }
@@ -562,13 +612,16 @@ class TranscriptFetcher(private val context: Context) {
     private companion object {
         const val INFO_JSON_SUFFIX = ".info.json"
         const val SESSION_FILE = "session.txt"
+        // The playlist resume window: a recent attempt on the same playlist keeps
+        // its subs dir across retries, independent of the cache TTL preference.
+        const val SESSION_MAX_AGE_MILLIS = 60L * 60 * 1000
+        // The negative cache: the video will not grow captions by retrying sooner.
+        const val MISSING_TTL_MILLIS = 24L * 60 * 60 * 1000
         // ponytail: 10 MB ≈ many hours of word-level captions; bigger files are
         // skipped — reading one into the heap OOMs (org.json needs the whole string).
         const val MAX_PARSE_BYTES = 10L * 1024 * 1024
         const val UPDATE_TTL_MILLIS = 72L * 60 * 60 * 1000
         const val RECENT_UPDATE_MILLIS = 12L * 60 * 60 * 1000
-        const val TRANSCRIPT_TTL_MILLIS = 60L * 60 * 1000
-        const val MISSING_TTL_MILLIS = 24L * 60 * 60 * 1000
         const val CACHE_MAX_BYTES = 30L * 1024 * 1024
         const val KEY_LAST_UPDATE = "yt_dlp_last_update"
     }

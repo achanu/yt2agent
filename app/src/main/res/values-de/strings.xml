@@ -13,10 +13,33 @@
     <string name="op_downloading">Untertitel werden geladen…</string>
     <string name="op_writing">Dateien werden geschrieben…</string>
     <string name="elapsed">%1$d s</string>
-    <string name="remove_sponsors">Sponsorensegmente entfernen</string>\n    <string name="remove_selfpromo">Eigenwerbung und Handlungsaufrufe entfernen</string>
+    <string name="remove_sponsors">Sponsorensegmente entfernen</string>
+    <string name="remove_selfpromo">Eigenwerbung und Handlungsaufrufe entfernen</string>
     <string name="include_description">Beschreibung einbeziehen</string>
     <string name="copy_details">Details kopieren</string>
     <string name="copied">Kopiert</string>
     <string name="share_as_file">Als Datei teilen</string>
     <string name="playlist_videos">%1$d Videos</string>
+    <string name="config">Einstellungen</string>
+    <string name="copy">Kopieren</string>
+    <string name="delete">Löschen</string>
+    <string name="preprompt">Pre-Prompt hinzufügen</string>
+    <string name="preprompt_hint">Text vor dem Transkript (max. 500 Zeichen)</string>
+    <string name="delete_confirm">Dieses Transkript aus dem Cache löschen?</string>
+    <string name="share">Teilen</string>
+    <string name="no_cached_transcripts">Keine zwischengespeicherten Transkripte</string>
+    <string name="cache_ttl_label">Cache-Dauer der Transkripte</string>
+    <string-array name="ttl_labels">
+        <item>1 h</item>
+        <item>3 h</item>
+        <item>6 h</item>
+        <item>12 h</item>
+        <item>1 T</item>
+        <item>3 T</item>
+        <item>7 T</item>
+    </string-array>
+    <string name="yt_dlp_version">yt-dlp-Version: %1$s</string>
+    <string name="yt_dlp_version_loading">yt-dlp-Version: wird geladen…</string>
+    <string name="app_version">yt2agent-Version: %1$s</string>
+    <string name="unknown">unbekannt</string>
 </resources>

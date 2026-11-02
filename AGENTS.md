@@ -5,7 +5,9 @@
 yt2agent: Android app registered as a share target (`ACTION_SEND`, text/plain). Receives
 a URL shared from any app, fetches the video transcript with yt-dlp, and re-shares the
 timestamped transcript to any app — typically an AI agent app. Model: Scrambled Exif
-(share in → transform → share out). No main UI, no launcher activity.
+(share in → transform → share out). The launcher activity (`MainActivity`) shows the
+share options, build info (cache TTL, yt-dlp and app versions), and the cached
+transcripts with copy and share buttons; it never fetches.
 
 ## Toolchain
 
@@ -36,6 +38,12 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 
 ## Layout
 
+- `app/src/main/java/info/chanu/yt2agent/MainActivity.kt` — launcher screen: the
+  app logo and name header, the cached transcripts (`cachedTranscripts()`, most
+  recent first; subtitle = cache date + id) with delete/copy/share icon buttons,
+  and a collapsed config panel: the share-option checkboxes (same preferences as
+  the fetch screen), the transcript-cache TTL dropdown (`KEY_TTL_HOURS`,
+  1 h–7 d, default 1 d), and the app/yt-dlp versions.
 - `app/src/main/java/info/chanu/yt2agent/ShareActivity.kt` — intent handling, first-URL
   extraction (`findSharedUrl`), playlist detection (`isPlaylistUrl`), share-text building
   (`buildShareText`, `buildPlaylistDocument`, `stripLinkSchemes`), share out.
@@ -47,8 +55,9 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 
 ## Conventions
 
-- Keep the app minimal: single activity, single fetch path. No settings screen, no
-  database, no dependencies beyond the yt-dlp library.
+- Keep the app minimal: two activities (share flow + launcher), single fetch path. No
+  database, no dependencies beyond the yt-dlp library. The launcher screen reads the
+  cache and displays build info; it never fetches.
 - Pure logic (parsing, regexes) goes in top-level `internal` functions so it is unit
   testable without Android.
 - `YoutubeDL.init()` and `execute()` are blocking; call them only from a background
@@ -88,7 +97,8 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
 - Network frugality: `--sub-langs "en.*-orig,<locale>.*-orig,<locale>,en"` downloads
   only the tracks the selector can pick (multi-ASR videos expose 16 "-orig" tracks);
   `--retries 3 --retry-sleep 10` keeps 429-storm request counts low; transcripts are
-  cached 7 days and no-transcript failures 24 h, so cache hits cost zero requests.
+  cached (dropdown TTL on the main screen: 1 h–7 d, default 1 d) and no-transcript
+  failures 24 h, so cache hits cost zero requests.
 - Single-video path: `--no-playlist` + `--playlist-items 1`. Channel URLs
   enumerate every video otherwise (a channel link used to hang the fetch
   indefinitely); any multi-video extraction is capped to its first entry.
@@ -150,7 +160,8 @@ timestamped transcript to any app — typically an AI agent app. Model: Scramble
   false) and filters at share time — retroactive on cached entries. Key prefix v7
   (bumped with the playlist path).
 - Cache: chapters ARE cached (JSONArray of {ms, t}).
-- Cache: `cacheDir/transcripts/<md5-of-url>.json`, 1-hour TTL (short-term de-dup);
+- Cache: `cacheDir/transcripts/<md5-of-url>.json`, TTL from the main-screen dropdown
+  (`KEY_TTL_HOURS`, default 1 d; short-term de-dup, not a store);
   read before init, write after a successful fetch. Negative cache: `missing-<key>.json`,
   24-hour TTL. `pruneCache()` drops expired entries and enforces a 30 MB cap on every
   write.

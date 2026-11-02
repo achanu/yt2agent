@@ -13,10 +13,33 @@
     <string name="op_downloading">Téléchargement des sous-titres…</string>
     <string name="op_writing">Écriture des fichiers…</string>
     <string name="elapsed">%1$d s</string>
-    <string name="remove_sponsors">Retirer les segments sponsor</string>\n    <string name="remove_selfpromo">Retirer l’auto-promo et les appels à l’action</string>
+    <string name="remove_sponsors">Retirer les segments sponsor</string>
+    <string name="remove_selfpromo">Retirer l’auto-promo et les appels à l’action</string>
     <string name="include_description">Inclure la description</string>
     <string name="copy_details">Copier les détails</string>
     <string name="copied">Copié</string>
     <string name="share_as_file">Partager en fichier</string>
     <string name="playlist_videos">%1$d vidéos</string>
+    <string name="config">Configuration</string>
+    <string name="copy">Copier</string>
+    <string name="delete">Supprimer</string>
+    <string name="preprompt">Ajouter un pré-prompt</string>
+    <string name="preprompt_hint">Texte ajouté au début du transcript (500 caractères max)</string>
+    <string name="delete_confirm">Supprimer cette transcription du cache ?</string>
+    <string name="share">Partager</string>
+    <string name="no_cached_transcripts">Aucune transcription en cache</string>
+    <string name="cache_ttl_label">Durée du cache des transcriptions</string>
+    <string-array name="ttl_labels">
+        <item>1 h</item>
+        <item>3 h</item>
+        <item>6 h</item>
+        <item>12 h</item>
+        <item>1 j</item>
+        <item>3 j</item>
+        <item>7 j</item>
+    </string-array>
+    <string name="yt_dlp_version">Version de yt-dlp : %1$s</string>
+    <string name="yt_dlp_version_loading">Version de yt-dlp : chargement…</string>
+    <string name="app_version">Version de yt2agent : %1$s</string>
+    <string name="unknown">inconnue</string>
 </resources>

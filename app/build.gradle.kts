@@ -12,8 +12,8 @@ android {
         applicationId = "info.chanu.yt2agent"
         minSdk = 24
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.11.2"
+        versionCode = 19
+        versionName = "0.12.0"
 
         ndk {
             // x86/x86_64 only serve emulators; splits.include does not filter the

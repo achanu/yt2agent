@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -31,7 +32,7 @@ class ShareActivity : Activity() {
     /** Bumped on every new fetch; stale fetches must not touch the UI. */
     private var fetchGeneration = 0
 
-    private val prefs by lazy { getSharedPreferences("yt2agent", MODE_PRIVATE) }
+    private val prefs by lazy { getSharedPreferences(PREFS_NAME, MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,15 +74,9 @@ class ShareActivity : Activity() {
         } else {
             wireCheckbox(R.id.share_as_file, KEY_SHARE_AS_FILE, default = false)
         }
-    }
-
-    /** Binds a checkbox to its persistent preference. */
-    private fun wireCheckbox(id: Int, key: String, default: Boolean) {
-        val checkbox = findViewById<CheckBox>(id)
-        checkbox.isChecked = prefs.getBoolean(key, default)
-        checkbox.setOnCheckedChangeListener { _, checked ->
-            prefs.edit().putBoolean(key, checked).apply()
-        }
+        // Toggles the pre-prompt only; the text preference lives on the main
+        // screen and is never reset here.
+        wireCheckbox(R.id.preprompt_enable, KEY_INCLUDE_PREPROMPT, default = false)
     }
 
     private fun startFetch() {
@@ -161,20 +156,6 @@ class ShareActivity : Activity() {
         }
     }
 
-    /** Writes the share text to a cache file and exposes it via the FileProvider. */
-    private fun fileUri(text: String): Uri {
-        val dir = File(cacheDir, "shared").apply {
-            mkdirs()
-            listFiles()?.forEach { it.delete() }
-        }
-        // Sortable and unique within a minute; the video or playlist title stays
-        // in the share subject.
-        val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
-        val file = File(dir, "${stamp}_yt2agent.txt")
-        file.writeText(text)
-        return FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
-    }
-
     private fun showError(e: Exception) {
         setContentView(R.layout.activity_error)
         findViewById<TextView>(R.id.error_message).text = firstErrorLine(e)
@@ -209,6 +190,7 @@ class ShareActivity : Activity() {
             text,
             prefs.getBoolean(KEY_SHARE_AS_FILE, false),
         )
+        finish()
     }
 
     /** The playlist document always goes out as a file attachment. */
@@ -223,29 +205,6 @@ class ShareActivity : Activity() {
             prefs.getBoolean(KEY_INCLUDE_DESCRIPTION, true),
         )
         shareOut(playlist.title.ifEmpty { videoUrl }, text, asFile = true)
-    }
-
-    private fun shareOut(title: String, text: String, asFile: Boolean) {
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, title)
-            if (asFile) {
-                // Long texts choke some destination apps; the file carries the
-                // same content as an attachment.
-                putExtra(Intent.EXTRA_STREAM, fileUri(text))
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } else {
-                putExtra(Intent.EXTRA_TEXT, text)
-            }
-        }
-        val chooser = Intent.createChooser(send, getString(R.string.share_via)).apply {
-            // yt2agent itself shares text/plain; do not offer it as a destination.
-            putExtra(
-                Intent.EXTRA_EXCLUDE_COMPONENTS,
-                arrayOf(ComponentName(this@ShareActivity, ShareActivity::class.java)),
-            )
-        }
-        startActivity(chooser)
         finish()
     }
 }
@@ -265,11 +224,78 @@ internal fun operationStringRes(line: String): Int? = when {
 }
 
 private const val DESCRIPTION_MAX_CHARS = 1000
-private const val KEY_INCLUDE_DESCRIPTION = "include_description"
-private const val KEY_SHARE_AS_FILE = "share_as_file"
-private const val MIN_FETCH_DISPLAY_MILLIS = 1000L
-private const val KEY_REMOVE_SPONSORS = "remove_sponsors"
-private const val KEY_REMOVE_SELF_PROMO = "remove_selfpromo"
+/** One name for the shared preference store; a divergent literal forks the prefs. */
+internal const val PREFS_NAME = "yt2agent"
+internal const val KEY_INCLUDE_DESCRIPTION = "include_description"
+internal const val KEY_SHARE_AS_FILE = "share_as_file"
+internal const val MIN_FETCH_DISPLAY_MILLIS = 1000L
+internal const val KEY_REMOVE_SPONSORS = "remove_sponsors"
+internal const val KEY_REMOVE_SELF_PROMO = "remove_selfpromo"
+internal const val KEY_TTL_HOURS = "transcript_ttl_hours"
+internal const val KEY_INCLUDE_PREPROMPT = "include_preprompt"
+internal const val KEY_PREPROMPT = "preprompt"
+
+/** Binds a checkbox to its persistent preference. */
+internal fun Activity.wireCheckbox(id: Int, key: String, default: Boolean) {
+    val checkbox = findViewById<CheckBox>(id)
+    val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    checkbox.isChecked = prefs.getBoolean(key, default)
+    checkbox.setOnCheckedChangeListener { _, checked ->
+        prefs.edit().putBoolean(key, checked).apply()
+    }
+}
+
+/** Writes the share text to a cache file and exposes it via the FileProvider. */
+internal fun Activity.fileUri(text: String): Uri {
+    val dir = File(cacheDir, "shared").apply {
+        mkdirs()
+        listFiles()?.forEach { it.delete() }
+    }
+    // Sortable and unique within a minute; the video or playlist title stays
+    // in the share subject.
+    val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
+    val file = File(dir, "${stamp}_yt2agent.txt")
+    file.writeText(text)
+    return FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+}
+
+/**
+ * The pre-prompt block at the top of the shared text, or empty when the option
+ * is off. The text itself is a separate preference the toggle never clears.
+ */
+internal fun Activity.prepromptPrefix(): String {
+    val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    if (!prefs.getBoolean(KEY_INCLUDE_PREPROMPT, false)) return ""
+    val text = prefs.getString(KEY_PREPROMPT, "")?.trim().orEmpty()
+    return if (text.isEmpty()) "" else "$text\n\n"
+}
+
+/**
+ * Fires the share chooser with [text] (as a file attachment when [asFile]: long
+ * texts choke some destination apps), prefixed with the pre-prompt when on.
+ */
+internal fun Activity.shareOut(title: String, text: String, asFile: Boolean) {
+    val withPreprompt = prepromptPrefix() + text
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, title)
+        if (asFile) {
+            putExtra(Intent.EXTRA_STREAM, fileUri(withPreprompt))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } else {
+            putExtra(Intent.EXTRA_TEXT, withPreprompt)
+        }
+    }
+    val chooser = Intent.createChooser(send, getString(R.string.share_via)).apply {
+        // yt2agent's share target shares text/plain; do not offer it as a
+        // destination — the transcript is not a URL to fetch.
+        putExtra(
+            Intent.EXTRA_EXCLUDE_COMPONENTS,
+            arrayOf(ComponentName(this@shareOut, ShareActivity::class.java)),
+        )
+    }
+    startActivity(chooser)
+}
 
 /**
  * Caps the description: some are huge walls of links and hashtags and would bloat
